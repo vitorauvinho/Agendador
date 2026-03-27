@@ -30,27 +30,27 @@ export default function Onboarding({ activeTeam }) {
     setLoading(true)
     setSelectedId(null)
 
-    // Busca analistas com contagem de sessões inline
-    const { data: analystData } = await supabase
+    const { data: analystData, error } = await supabase
       .from('analysts')
-      .select('*, sessions(id, completed), session_ratings(rating), analyst_gamification(xp_total, level, level_name, streak_best, badges)')
+      .select('*')
       .eq('team', activeTeam)
       .order('created_at', { ascending: false })
 
-    // Calcular progresso no frontend
-    const enriched = (analystData || []).map(a => {
-      const total = a.sessions?.length || 0
-      const done = a.sessions?.filter(s => s.completed).length || 0
-      const ratings = a.session_ratings || []
-      const avgCsat = ratings.length ? (ratings.reduce((s, r) => s + r.rating, 0) / ratings.length).toFixed(1) : null
-      return {
-        ...a,
-        total_sessions: total,
-        done_sessions: done,
-        progress_pct: total ? Math.round((done / total) * 100) : 0,
-        avg_csat: avgCsat,
-      }
-    })
+    if (error || !analystData) { setLoading(false); return }
+
+    const enriched = await Promise.all(analystData.map(async a => {
+      const { data: sess } = await supabase
+        .from('sessions').select('id, completed').eq('analyst_id', a.id)
+      const { data: ratings } = await supabase
+        .from('session_ratings').select('rating').eq('analyst_id', a.id)
+      const total = sess?.length || 0
+      const done = sess?.filter(s => s.completed).length || 0
+      const avgCsat = ratings?.length
+        ? (ratings.reduce((s, r) => s + r.rating, 0) / ratings.length).toFixed(1)
+        : null
+      return { ...a, total_sessions: total, done_sessions: done,
+        progress_pct: total ? Math.round((done / total) * 100) : 0, avg_csat: avgCsat }
+    }))
 
     setAnalysts(enriched)
     setLoading(false)
