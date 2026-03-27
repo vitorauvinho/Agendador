@@ -222,7 +222,7 @@ export default function Trilha() {
   const pct = total ? Math.round((done / total) * 100) : 0
 
   return (
-    <div style={{ background: 'var(--bg)', minHeight: '100vh', padding: '24px', maxWidth: 900, margin: '0 auto' }}>
+    <div style={{ background: 'var(--bg)', minHeight: '100vh', height: '100vh', overflowY: 'auto', padding: '24px', maxWidth: 900, margin: '0 auto' }}>
 
       {/* Header */}
       <div style={{ background: 'linear-gradient(135deg, rgba(109,38,194,0.15), rgba(16,185,129,0.06))', border: '1px solid var(--auvo-border)', borderRadius: 16, padding: 20, marginBottom: 20 }}>
@@ -369,6 +369,26 @@ export default function Trilha() {
                                     onClick={() => completeSession(session)}>
                                     {hasCsat ? 'Marcar como concluída' : 'Concluir e avaliar sessão'}
                                   </button>
+                                )}
+
+                                {/* Avaliar sessão já concluída sem CSAT */}
+                                {session.completed && !hasCsat && (
+                                  <button className="btn btn-sm" style={{ width: '100%', fontSize: 11, marginTop: 6, color: 'var(--auvo)', borderColor: 'var(--auvo-border)' }}
+                                    onClick={() => { setCsatScore(0); setCsatComment(''); setShowCsat(session.id) }}>
+                                    ✨ Avaliar esta sessão
+                                  </button>
+                                )}
+
+                                {/* CSAT já respondido */}
+                                {session.completed && hasCsat && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, color: 'var(--muted2)' }}>
+                                    <span style={{ fontSize: 16 }}>{['','😞','😐','😊','🤩'][session.session_ratings[0].rating]}</span>
+                                    <span>Você avaliou esta sessão</span>
+                                    <button className="btn btn-sm" style={{ fontSize: 9, marginLeft: 'auto' }}
+                                      onClick={() => { setCsatScore(session.session_ratings[0].rating); setCsatComment(session.session_ratings[0].comment||''); setShowCsat(session.id) }}>
+                                      Editar
+                                    </button>
+                                  </div>
                                 )}
                               </div>
                             )}
