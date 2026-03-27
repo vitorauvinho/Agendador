@@ -21,7 +21,10 @@ export default function Trilha() {
 
   useEffect(() => { loadAll() }, [token])
 
-  async function loadAll() {
+  async function loadAll(silent = false) {
+    // silent=true: não mostra loading spinner, não reseta scroll
+    if (!silent) setLoading(true)
+
     const { data: a } = await supabase.from('analysts').select('*').eq('access_token', token).single()
     if (!a) { setLoading(false); return }
     setAnalyst(a)
@@ -123,7 +126,7 @@ export default function Trilha() {
 
     setShowCsat(null); setCsatScore(0); setCsatComment('')
     setSubmitting(s => ({ ...s, [sessionId]: false }))
-    loadAll()
+    loadAll(true)
   }
 
   async function submitVideo(sessionId) {
@@ -149,7 +152,7 @@ export default function Trilha() {
     }
 
     setSubmitting(s => ({ ...s, [`v_${sessionId}`]: false }))
-    loadAll()
+    loadAll(true)
   }
 
   async function completeSession(session) {
@@ -197,7 +200,7 @@ export default function Trilha() {
     const { data: updatedSessions } = await supabase.from('sessions').select('*').eq('analyst_id', analyst.id)
     await checkAndGrantBadges(analyst.id, updatedSessions || [], updatedGamif)
 
-    loadAll()
+    loadAll(true)
   }
 
   if (loading) return (
