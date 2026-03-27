@@ -29,12 +29,30 @@ export default function Onboarding({ activeTeam }) {
   async function loadAnalysts() {
     setLoading(true)
     setSelectedId(null)
-    const { data } = await supabase
-      .from('analyst_progress')
-      .select('*')
+
+    // Busca analistas com contagem de sessões inline
+    const { data: analystData } = await supabase
+      .from('analysts')
+      .select('*, sessions(id, completed), session_ratings(rating), analyst_gamification(xp_total, level, level_name, streak_best, badges)')
       .eq('team', activeTeam)
       .order('created_at', { ascending: false })
-    setAnalysts(data || [])
+
+    // Calcular progresso no frontend
+    const enriched = (analystData || []).map(a => {
+      const total = a.sessions?.length || 0
+      const done = a.sessions?.filter(s => s.completed).length || 0
+      const ratings = a.session_ratings || []
+      const avgCsat = ratings.length ? (ratings.reduce((s, r) => s + r.rating, 0) / ratings.length).toFixed(1) : null
+      return {
+        ...a,
+        total_sessions: total,
+        done_sessions: done,
+        progress_pct: total ? Math.round((done / total) * 100) : 0,
+        avg_csat: avgCsat,
+      }
+    })
+
+    setAnalysts(enriched)
     setLoading(false)
   }
 
