@@ -245,9 +245,11 @@ export default function Trilha() {
           <div style={{ height: '100%', width: `${pct}%`, borderRadius: 6, background: pct === 100 ? 'var(--green)' : 'var(--auvo)', transition: 'width 0.7s ease' }} />
         </div>
         {gamif && (
-          <div style={{ display: 'flex', gap: 16, marginTop: 12 }}>
+          <div style={{ display: 'flex', gap: 16, marginTop: 12, alignItems: 'center' }}>
             <span style={{ fontSize: 11, color: 'var(--muted2)' }}>⭐ {gamif.xp_total || 0} XP · {gamif.level_name}</span>
             {gamif.streak_days > 0 && <span style={{ fontSize: 11, color: 'var(--amber)' }}>🔥 {gamif.streak_days} dias seguidos</span>}
+            <a href={`/analista/${token}/estudar`} style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--auvo)', textDecoration: 'none', padding: '4px 10px', border: '1px solid var(--auvo-border)', borderRadius: 6, background: 'var(--auvo-dim)' }}>📚 Ver materiais</a>
+            <a href={`/analista/${token}/gamificacao`} style={{ fontSize: 11, color: 'var(--auvo)', textDecoration: 'none', padding: '4px 10px', border: '1px solid var(--auvo-border)', borderRadius: 6, background: 'var(--auvo-dim)' }}>🏆 Gamificação</a>
           </div>
         )}
       </div>
