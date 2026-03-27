@@ -40,6 +40,74 @@ export default function Trilha() {
     setLoading(false)
   }
 
+
+  async function checkAndGrantBadges(analystId, updatedSessions, updatedGamif) {
+    const currentBadges = updatedGamif?.badges || []
+    const newBadges = [...currentBadges]
+
+    const completedSessions = updatedSessions.filter(s => s.completed)
+    const simulations = completedSessions.filter(s => s.type === 'simulacao')
+    const videos = await supabase.from('video_submissions').select('id').eq('analyst_id', analystId)
+    const csats = await supabase.from('session_ratings').select('id').eq('analyst_id', analystId)
+    const videoCount = videos.data?.length || 0
+    const csatCount = csats.data?.length || 0
+
+    // Helper
+    const grant = (id) => { if (!newBadges.includes(id)) newBadges.push(id) }
+
+    // 🎯 Primeiro passo — primeira simulação
+    if (simulations.length >= 1) grant('primeira_simulacao')
+
+    // ⚡ Semana 1 perfeita — dias 1 a 5 todos concluídos
+    const week1Done = updatedSessions.filter(s => s.day_number <= 5).every(s => s.completed)
+    if (week1Done && updatedSessions.filter(s => s.day_number <= 5).length > 0) grant('semana1_completa')
+
+    // 🔥 Chama acesa — streak 7 dias
+    if ((updatedGamif?.streak_best || 0) >= 7) grant('streak_7')
+
+    // 💥 Imparável — streak 14 dias
+    if ((updatedGamif?.streak_best || 0) >= 14) grant('streak_14')
+
+    // 🏅 PMOC Master — todos os módulos PMOC concluídos
+    const pmocSessions = updatedSessions.filter(s => s.title?.toLowerCase().includes('pmoc'))
+    if (pmocSessions.length > 0 && pmocSessions.every(s => s.completed)) grant('pmoc_master')
+
+    // 📹 Diretor — 5 vídeos enviados
+    if (videoCount >= 5) grant('diretor')
+
+    // 💬 Voz ativa — 20 CSATs respondidos
+    if (csatCount >= 20) grant('csat_top')
+
+    // 🚀 Velocista — semana 1 concluída em menos de 5 dias úteis
+    if (week1Done) {
+      const week1Sessions = updatedSessions.filter(s => s.day_number <= 5 && s.completed_at)
+      if (week1Sessions.length > 0) {
+        const lastW1 = new Date(Math.max(...week1Sessions.map(s => new Date(s.completed_at))))
+        const start = new Date(analyst.start_date + 'T12:00:00Z')
+        const diffDays = Math.ceil((lastW1 - start) / (1000 * 60 * 60 * 24))
+        if (diffDays <= 5) grant('velocista')
+      }
+    }
+
+    // 🏆 Onboarding completo — 100%
+    const allDone = updatedSessions.every(s => s.completed)
+    if (allDone && updatedSessions.length > 0) {
+      grant('onboarding_completo')
+
+      // 💜 Auvonauta — 100% + CSAT médio >= 3.5
+      const ratings = await supabase.from('session_ratings').select('rating').eq('analyst_id', analystId)
+      if (ratings.data?.length) {
+        const avg = ratings.data.reduce((s, r) => s + r.rating, 0) / ratings.data.length
+        if (avg >= 3.5) grant('auvonauta')
+      }
+    }
+
+    // Só atualiza se houver badges novos
+    if (newBadges.length !== currentBadges.length) {
+      await supabase.from('analyst_gamification').update({ badges: newBadges }).eq('analyst_id', analystId)
+    }
+  }
+
   async function submitCsat(sessionId) {
     if (!csatScore) return
     setSubmitting(s => ({ ...s, [sessionId]: true }))
@@ -97,11 +165,38 @@ export default function Trilha() {
     // XP
     const xpKey = session.type === 'simulacao' ? 'simulacao_concluida' : 'treinamento_concluido'
     await supabase.from('xp_history').insert({ analyst_id: analyst.id, xp_gained: XP_VALUES[xpKey], reason: xpKey, session_id: session.id })
+    let updatedGamif = gamif
     if (gamif) {
       const newXp = (gamif.xp_total || 0) + XP_VALUES[xpKey]
       const lvl = getLevelInfo(newXp)
-      await supabase.from('analyst_gamification').update({ xp_total: newXp, level: lvl.level, level_name: lvl.name }).eq('analyst_id', analyst.id)
+
+      // Streak
+      const today = new Date().toISOString().split('T')[0]
+      const lastDate = gamif.streak_last_date
+      let newStreak = gamif.streak_days || 0
+      if (lastDate !== today) {
+        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
+        newStreak = lastDate === yesterday ? newStreak + 1 : 1
+      }
+      const newBest = Math.max(gamif.streak_best || 0, newStreak)
+
+      // Streak bonus XP
+      let bonusXp = 0
+      if (newStreak === 5)  bonusXp = XP_VALUES.streak_5_dias
+      if (newStreak === 7)  bonusXp = XP_VALUES.streak_7_dias
+      if (newStreak === 14) bonusXp = XP_VALUES.streak_14_dias
+      if (bonusXp) await supabase.from('xp_history').insert({ analyst_id: analyst.id, xp_gained: bonusXp, reason: `streak_${newStreak}_dias` })
+
+      const finalXp = newXp + bonusXp
+      const finalLvl = getLevelInfo(finalXp)
+      await supabase.from('analyst_gamification').update({ xp_total: finalXp, level: finalLvl.level, level_name: finalLvl.name, streak_days: newStreak, streak_best: newBest, streak_last_date: today }).eq('analyst_id', analyst.id)
+      updatedGamif = { ...gamif, xp_total: finalXp, streak_days: newStreak, streak_best: newBest }
     }
+
+    // Check badges
+    const { data: updatedSessions } = await supabase.from('sessions').select('*').eq('analyst_id', analyst.id)
+    await checkAndGrantBadges(analyst.id, updatedSessions || [], updatedGamif)
+
     loadAll()
   }
 
