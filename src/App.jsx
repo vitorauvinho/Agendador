@@ -10,6 +10,7 @@ import PainelRH from './pages/PainelRH.jsx'
 import Configuracoes from './pages/Configuracoes.jsx'
 import Trilha from './pages/Trilha.jsx'
 import MinhaGamificacao from './pages/MinhaGamificacao.jsx'
+import Estudar from './pages/Estudar.jsx'
 import { supabase } from './lib/supabase.js'
 
 export default function App() {
@@ -36,6 +37,7 @@ export default function App() {
       {/* Analyst views via unique token */}
       <Route path="/analista/:token" element={<Trilha />} />
       <Route path="/analista/:token/gamificacao" element={<MinhaGamificacao />} />
+      <Route path="/analista/:token/estudar" element={<Estudar />} />
 
       {/* Main platform */}
       <Route path="/*" element={
