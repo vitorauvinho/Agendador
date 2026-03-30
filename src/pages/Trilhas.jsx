@@ -83,9 +83,14 @@ export default function Trilhas({ activeTeam }) {
     const idx = trails.findIndex(t => t.id === trail.id)
     const swap = trails[idx + dir]
     if (!swap) return
+
+    // Garante que todos têm order_index sequencial antes de trocar
+    const newOrderA = idx + dir
+    const newOrderB = idx
+
     await Promise.all([
-      supabase.from('video_trails').update({ order_index: swap.order_index }).eq('id', trail.id),
-      supabase.from('video_trails').update({ order_index: trail.order_index }).eq('id', swap.id),
+      supabase.from('video_trails').update({ order_index: newOrderA }).eq('id', trail.id),
+      supabase.from('video_trails').update({ order_index: newOrderB }).eq('id', swap.id),
     ])
     loadTrails()
   }
