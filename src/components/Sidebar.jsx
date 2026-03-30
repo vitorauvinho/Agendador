@@ -2,6 +2,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 
 const NAV_ENABLEMENT = [
   { path: '/onboarding',    icon: '📅', label: 'Onboarding' },
+  { path: '/exercicios',    icon: '📋', label: 'Exercícios' },
   { path: '/biblioteca',    icon: '📚', label: 'Biblioteca' },
   { path: '/trilhas',       icon: '🎬', label: 'Trilhas de vídeo' },
   { path: '/revisoes',      icon: '📋', label: 'Revisões', badge: true },
