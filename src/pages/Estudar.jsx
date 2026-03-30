@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase'
 
 const CONTENT_TYPES = [
   { key: 'youtube',    label: 'YouTube',    icon: '▶️' },
-  { key: 'pdf',        label: 'PDF',        icon: '📄' },
+  { key: 'pdf',        label: 'Trein. Gravados', icon: '🎬' },
   { key: 'notebooklm', label: 'NotebookLM', icon: '🤖' },
   { key: 'texto',      label: 'Texto',      icon: '📝' },
   { key: 'playbook',   label: 'Playbook',   icon: '📘' },
@@ -131,7 +131,7 @@ export default function Estudar() {
                       )}
                       <div style={{ fontSize: 10, color: 'var(--auvo)', fontWeight: 500 }}>
                         {item.type === 'youtube' && '▶ Assistir'}
-                        {item.type === 'pdf' && '📄 Abrir PDF'}
+                        {item.type === 'pdf' && '🎬 Assistir gravação'}
                         {item.type === 'notebooklm' && '🤖 Abrir NotebookLM'}
                         {item.type === 'texto' && '📝 Ler'}
                         {item.type === 'playbook' && '📘 Abrir playbook'}
