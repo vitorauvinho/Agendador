@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import AnalistaLayout from '../components/AnalistaLayout.jsx'
 import { supabase, WEEKS, getSessionDate, fmtDate, fmtWeekday, fmtDateLong, XP_VALUES, getLevelInfo } from '../lib/supabase'
 
-const EMOJIS = ['', '😞', '😐', '😊', '🤩']
+const EMOJIS = ['', '😞', '😐', '😊', '😁', '🤩']
 
 export default function Trilha() {
   const { token } = useParams()
@@ -453,9 +453,9 @@ export default function Trilha() {
             <div className="modal-body">
               <div style={{ fontSize: 12, color: 'var(--muted2)', marginBottom: 16 }}>Sua avaliação ajuda o enablement a melhorar o onboarding.</div>
               <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginBottom: 18 }}>
-                {[1, 2, 3, 4].map(score => (
+                {[1, 2, 3, 4, 5].map(score => (
                   <button key={score} onClick={() => setCsatScore(score)}
-                    style={{ width: 64, height: 64, borderRadius: 14, border: `2px solid ${csatScore === score ? 'var(--auvo)' : 'var(--border2)'}`, background: csatScore === score ? 'var(--auvo-dim)' : 'var(--surface2)', cursor: 'pointer', fontSize: 28, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, transform: csatScore === score ? 'scale(1.08)' : 'scale(1)', transition: 'all 0.15s' }}>
+                    style={{ width: 52, height: 52, borderRadius: 12, border: `2px solid ${csatScore === score ? 'var(--auvo)' : 'var(--border2)'}`, background: csatScore === score ? 'var(--auvo-dim)' : 'var(--surface2)', cursor: 'pointer', fontSize: 28, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, transform: csatScore === score ? 'scale(1.08)' : 'scale(1)', transition: 'all 0.15s' }}>
                     <span>{EMOJIS[score]}</span>
                     <span style={{ fontSize: 8, color: 'var(--muted)', fontFamily: 'monospace' }}>{score}</span>
                   </button>
