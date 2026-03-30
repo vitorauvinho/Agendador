@@ -37,13 +37,7 @@ export default function App() {
 
   return (
     <Routes>
-      {/* Analyst views via unique token */}
-      <Route path="/analista/:token" element={<Trilha />} />
-      <Route path="/analista/:token/gamificacao" element={<MinhaGamificacao />} />
-      <Route path="/analista/:token/estudar" element={<Estudar />} />
-      <Route path="/analista/:token/trilhas" element={<MinhasTrilhas />} />
-
-      {/* Main platform */}
+      {/* Main platform — deve vir ANTES das rotas do analista */}
       <Route path="/*" element={
         <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
           <Sidebar activeTeam={activeTeam} onTeamChange={setActiveTeam} pendingCount={pendingCount} />
@@ -63,6 +57,12 @@ export default function App() {
           </div>
         </div>
       } />
+
+      {/* Analyst views via unique token — DEPOIS da rota principal */}
+      <Route path="/analista/:token" element={<Trilha />} />
+      <Route path="/analista/:token/gamificacao" element={<MinhaGamificacao />} />
+      <Route path="/analista/:token/estudar" element={<Estudar />} />
+      <Route path="/analista/:token/trilhas" element={<MinhasTrilhas />} />
     </Routes>
   )
 }
