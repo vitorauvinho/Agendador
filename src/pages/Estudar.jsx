@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
+import AnalistaLayout from '../components/AnalistaLayout.jsx'
 import { supabase } from '../lib/supabase'
 
 const CONTENT_TYPES = [
@@ -70,7 +71,8 @@ export default function Estudar() {
   )
 
   return (
-    <div style={{ background: 'var(--bg)', minHeight: '100vh', height: '100vh', overflowY: 'auto', padding: '24px', maxWidth: 900, margin: '0 auto' }}>
+    <AnalistaLayout analystName={analyst?.name}>
+    <div style={{ padding: '24px', maxWidth: 860, margin: '0 auto' }}>
 
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
@@ -169,12 +171,10 @@ export default function Estudar() {
         </div>
       )}
 
-      {/* Back link */}
-      <div style={{ marginTop: 32, paddingTop: 20, borderTop: '1px solid var(--border)', textAlign: 'center' }}>
-        <a href={`/analista/${token}`} style={{ fontSize: 12, color: 'var(--auvo)', textDecoration: 'none' }}>
-          ← Voltar para minha trilha
-        </a>
-      </div>
+
+
+    </div>
+    </AnalistaLayout>
 
       {/* Preview Modal — YouTube */}
       {preview && preview.type === 'youtube' && (
@@ -213,5 +213,5 @@ export default function Estudar() {
         </div>
       )}
     </div>
-  )
+)
 }
