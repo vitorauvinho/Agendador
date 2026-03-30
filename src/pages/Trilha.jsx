@@ -266,7 +266,8 @@ export default function Trilha() {
                                   onClick={() => setExpandedSession(isExpanded ? null : session.id)}
                                 >
                                   <div className="flex items-center gap-2">
-                                    <input type="checkbox" checked={session.completed} readOnly style={{ accentColor: 'var(--green)', flexShrink: 0 }} />
+                                    <input type="checkbox" checked={session.completed} readOnly
+                                      style={{ accentColor: 'var(--green)', flexShrink: 0, pointerEvents: 'none' }} />
                                     <span style={{ flex: 1, textDecoration: session.completed ? 'line-through' : 'none', color: session.completed ? 'var(--muted)' : isNext ? 'var(--auvo)' : 'var(--text)', fontWeight: isNext ? 600 : 400 }}>
                                       {session.title} {isNext && '← próxima'}
                                     </span>
@@ -416,10 +417,14 @@ export default function Trilha() {
                   </button>
                 ))}
               </div>
-              {csatScore <= 2 && csatScore > 0 && (
+              {csatScore > 0 && (
                 <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 11, color: 'var(--muted2)', marginBottom: 6 }}>O que poderia melhorar?</div>
-                  <textarea value={csatComment} onChange={e => setCsatComment(e.target.value)} placeholder="Conte o que aconteceu..." style={{ minHeight: 70, resize: 'none', fontSize: 12 }} />
+                  <div style={{ fontSize: 11, color: 'var(--muted2)', marginBottom: 6 }}>
+                    {csatScore <= 2 ? 'O que poderia melhorar?' : 'Alguma anotação sobre esta sessão? (opcional)'}
+                  </div>
+                  <textarea value={csatComment} onChange={e => setCsatComment(e.target.value)}
+                    placeholder={csatScore <= 2 ? 'Conte o que aconteceu...' : 'Principais aprendizados, dúvidas ou observações...'}
+                    style={{ minHeight: 70, resize: 'none', fontSize: 12 }} />
                 </div>
               )}
             </div>
