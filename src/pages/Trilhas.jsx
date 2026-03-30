@@ -79,6 +79,17 @@ export default function Trilhas({ activeTeam }) {
     loadTrails()
   }
 
+  async function moveTrail(trail, dir) {
+    const idx = trails.findIndex(t => t.id === trail.id)
+    const swap = trails[idx + dir]
+    if (!swap) return
+    await Promise.all([
+      supabase.from('video_trails').update({ order_index: swap.order_index }).eq('id', trail.id),
+      supabase.from('video_trails').update({ order_index: trail.order_index }).eq('id', swap.id),
+    ])
+    loadTrails()
+  }
+
   async function deleteItem(id) {
     await supabase.from('video_trail_items').delete().eq('id', id)
     setConfirmDelete(null)
@@ -115,8 +126,11 @@ export default function Trilhas({ activeTeam }) {
 
           {/* Trail list */}
           <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 14, overflowY: 'auto' }}>
-            <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
-              {trails.length} trilha{trails.length !== 1 ? 's' : ''}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <span style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                {trails.length} trilha{trails.length !== 1 ? 's' : ''}
+              </span>
+              <span style={{ fontSize: 9, color: 'var(--muted)' }}>↑↓ para reordenar</span>
             </div>
             {trails.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--muted)' }}>
@@ -133,6 +147,12 @@ export default function Trilhas({ activeTeam }) {
                 </div>
                 {t.description && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.description}</div>}
                 <div className="flex gap-2" style={{ marginTop: 8 }} onClick={e => e.stopPropagation()}>
+                  <button className="btn btn-sm" style={{ fontSize: 9, padding: '2px 6px' }}
+                    disabled={trails.indexOf(t) === 0}
+                    onClick={() => moveTrail(t, -1)}>↑</button>
+                  <button className="btn btn-sm" style={{ fontSize: 9, padding: '2px 6px' }}
+                    disabled={trails.indexOf(t) === trails.length - 1}
+                    onClick={() => moveTrail(t, 1)}>↓</button>
                   <button className="btn btn-sm" style={{ fontSize: 9 }} onClick={() => { setTrailForm({ ...t }); setEditingTrail(t.id); setShowTrailForm(true) }}>✏️ Editar</button>
                   {confirmDelete === `trail_${t.id}` ? (
                     <>
