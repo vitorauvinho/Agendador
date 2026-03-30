@@ -89,7 +89,7 @@ export default function PainelRH({ activeTeam }) {
     taxa: analysts.length ? Math.round(analysts.filter(a => a.progress_pct === 100).length / analysts.length * 100) : 0,
   }
 
-  const EMOJIS = ['','😞','😐','😊','🤩']
+  const EMOJIS = ['','😞','😐','😊','😁','🤩']
 
   return (
     <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '22px 24px' }}>
