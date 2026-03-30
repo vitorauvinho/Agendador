@@ -302,7 +302,7 @@ export default function Trilha() {
 
                                     {/* Exercícios do treino — busca pelo dia da sessão */}
                                     {(() => {
-                                      const dayExercises = exerciseForms.filter(ef => ef.session_keys?.includes(session.day_number))
+                                      const dayExercises = exerciseForms.filter(ef => ef.session_keys?.includes(session.title))
                                       if (!dayExercises.length) return null
                                       return dayExercises.map(ef => {
                                         const resp = exerciseResponses.find(r => r.exercise_id === ef.id)
