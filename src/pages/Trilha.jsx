@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
+import AnalistaLayout from '../components/AnalistaLayout.jsx'
 import { supabase, WEEKS, getSessionDate, fmtDate, fmtWeekday, fmtDateLong, XP_VALUES, getLevelInfo } from '../lib/supabase'
 
 const EMOJIS = ['', '😞', '😐', '😊', '🤩']
@@ -222,7 +223,8 @@ export default function Trilha() {
   const pct = total ? Math.round((done / total) * 100) : 0
 
   return (
-    <div style={{ background: 'var(--bg)', minHeight: '100vh', height: '100vh', overflowY: 'auto', padding: '24px', maxWidth: 900, margin: '0 auto' }}>
+    <AnalistaLayout analystName={analyst?.name}>
+    <div style={{ padding: '24px', maxWidth: 860, margin: '0 auto' }}>
 
       {/* Header */}
       <div style={{ background: 'linear-gradient(135deg, rgba(109,38,194,0.15), rgba(16,185,129,0.06))', border: '1px solid var(--auvo-border)', borderRadius: 16, padding: 20, marginBottom: 20 }}>
@@ -442,6 +444,9 @@ export default function Trilha() {
           )}
         </div>
       </div>
+
+    </div>
+    </AnalistaLayout>
 
       {/* CSAT Modal */}
       {showCsat && (
