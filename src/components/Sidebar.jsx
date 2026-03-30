@@ -8,6 +8,7 @@ const NAV_ENABLEMENT = [
   { path: '/avaliacoes',    icon: '📊', label: 'Avaliações' },
   { path: '/gamificacao',   icon: '🏆', label: 'Gamificação' },
   { path: '/rh',            icon: '👥', label: 'Painel RH' },
+  { path: '/requalificacao', icon: '🔄', label: 'Requalificação' },
   { path: '/configuracoes', icon: '⚙️', label: 'Configurações' },
 ]
 
