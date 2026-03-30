@@ -55,12 +55,12 @@ export default function Exercicios({ activeTeam }) {
     load()
   }
 
-  function toggleSession(dayNum) {
+  function toggleSession(sessionKey) {
     setForm(f => ({
       ...f,
-      session_keys: f.session_keys?.includes(dayNum)
-        ? f.session_keys.filter(k => k !== dayNum)
-        : [...(f.session_keys || []), dayNum]
+      session_keys: f.session_keys?.includes(sessionKey)
+        ? f.session_keys.filter(k => k !== sessionKey)
+        : [...(f.session_keys || []), sessionKey]
     }))
   }
 
@@ -104,8 +104,6 @@ export default function Exercicios({ activeTeam }) {
           {exercises.map(ex => {
             const exResponses = getResponsesFor(ex.id)
             const isExpanded = expanded === ex.id
-            const linkedDays = [...new Set(ex.session_keys || [])].sort((a, b) => a - b)
-
             return (
               <div key={ex.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
                 {/* Header */}
@@ -116,11 +114,12 @@ export default function Exercicios({ activeTeam }) {
                     <div style={{ fontSize: 13, fontWeight: 600 }}>{ex.title}</div>
                     {ex.description && <div style={{ fontSize: 11, color: 'var(--muted2)', marginTop: 2 }}>{ex.description}</div>}
                     <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                      {linkedDays.length > 0 ? linkedDays.map(d => (
-                        <span key={d} style={{ fontSize: 9, padding: '2px 7px', borderRadius: 5, background: 'var(--auvo-dim)', color: 'var(--auvo)', fontWeight: 600 }}>Dia {d}</span>
+                      {ex.session_keys?.length > 0 ? ex.session_keys.slice(0,3).map(k => (
+                        <span key={k} style={{ fontSize: 9, padding: '2px 7px', borderRadius: 5, background: 'var(--auvo-dim)', color: 'var(--auvo)', fontWeight: 600, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{k}</span>
                       )) : (
                         <span style={{ fontSize: 9, color: 'var(--muted)' }}>Sem sessão vinculada</span>
                       )}
+                      {ex.session_keys?.length > 3 && <span style={{ fontSize: 9, color: 'var(--muted)' }}>+{ex.session_keys.length - 3}</span>}
                       <span style={{ fontSize: 10, color: exResponses.length > 0 ? 'var(--green)' : 'var(--muted2)', marginLeft: 4 }}>
                         {exResponses.length}/{analysts.length} responderam
                       </span>
@@ -223,13 +222,17 @@ export default function Exercicios({ activeTeam }) {
               <div className="form-group">
                 <label>Vincular às sessões</label>
                 <div style={{ maxHeight: 180, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  {allSessions.map(s => (
-                    <label key={`${s.day}-${s.id}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, border: `1px solid ${form.session_keys?.includes(s.day) ? 'var(--auvo-border)' : 'var(--border)'}`, cursor: 'pointer', marginBottom: 0, background: form.session_keys?.includes(s.day) ? 'var(--auvo-dim)' : 'transparent', fontSize: 11 }}>
-                      <input type="checkbox" checked={form.session_keys?.includes(s.day) || false} onChange={() => toggleSession(s.day)} />
-                      <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, background: 'var(--surface3)', color: 'var(--muted)', marginRight: 2, flexShrink: 0 }}>Dia {s.day}</span>
-                      {s.title}
-                    </label>
-                  ))}
+                  {allSessions.map(s => {
+                    const sessionKey = s.title
+                    const isChecked = form.session_keys?.includes(sessionKey) || false
+                    return (
+                      <label key={`${s.day}-${s.id}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, border: `1px solid ${isChecked ? 'var(--auvo-border)' : 'var(--border)'}`, cursor: 'pointer', marginBottom: 0, background: isChecked ? 'var(--auvo-dim)' : 'transparent', fontSize: 11 }}>
+                        <input type="checkbox" checked={isChecked} onChange={() => toggleSession(sessionKey)} />
+                        <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, background: 'var(--surface3)', color: 'var(--muted)', marginRight: 2, flexShrink: 0 }}>Dia {s.day}</span>
+                        {s.title}
+                      </label>
+                    )
+                  })}
                 </div>
               </div>
             </div>
