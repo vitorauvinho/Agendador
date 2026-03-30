@@ -19,6 +19,8 @@ export default function Trilha() {
   const [videoLinks, setVideoLinks] = useState({})
   const [submitting, setSubmitting] = useState({})
   const [expandedSession, setExpandedSession] = useState(null)
+  const [exerciseForms, setExerciseForms] = useState([])
+  const [exerciseResponses, setExerciseResponses] = useState([])
 
   useEffect(() => { loadAll() }, [token])
 
@@ -28,17 +30,21 @@ export default function Trilha() {
     if (!a) { setLoading(false); return }
     setAnalyst(a)
 
-    const [{ data: sess }, { data: cont }, { data: gam }, { data: er }] = await Promise.all([
+    const [{ data: sess }, { data: cont }, { data: gam }, { data: er }, { data: exForms }, { data: exResp }] = await Promise.all([
       supabase.from('sessions').select('*, exercises(*), video_submissions(*), session_ratings(*)').eq('analyst_id', a.id).order('day_number'),
       supabase.from('content_items').select('*').or(`team.eq.${a.team},team.eq.ambos`),
       supabase.from('analyst_gamification').select('*').eq('analyst_id', a.id).single(),
       supabase.from('enablement_ratings').select('*, sessions(title, day_number)').eq('analyst_id', a.id).order('created_at', { ascending: false }),
+      supabase.from('exercise_forms').select('*').or(`team.eq.${a.team},team.eq.ambos`),
+      supabase.from('exercise_responses').select('*').eq('analyst_id', a.id),
     ])
 
     setSessions(sess || [])
     setContents(cont || [])
     setGamif(gam)
     setEnRatings(er || [])
+    setExerciseForms(exForms || [])
+    setExerciseResponses(exResp || [])
     setLoading(false)
   }
 
@@ -294,45 +300,46 @@ export default function Trilha() {
                                       </div>
                                     )}
 
-                                    {/* Exercise */}
-                                    {hasEx && (
-                                      <div style={{ background: exDone ? 'var(--green-dim)' : 'var(--amber-dim)', border: `1px solid ${exDone ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}`, borderRadius: 8, padding: '10px 12px', marginBottom: 8, fontSize: 11 }}>
-                                        {exDone ? (
-                                          <div className="flex items-center gap-2">
-                                            <span>✅</span>
-                                            <span style={{ flex: 1, color: 'var(--green)', fontWeight: 600 }}>Exercício respondido!</span>
-                                          </div>
-                                        ) : (
-                                          <>
-                                            <div className="flex items-center gap-2" style={{ marginBottom: 8 }}>
-                                              <span>📋</span>
-                                              <span style={{ flex: 1, fontWeight: 600, color: 'var(--amber)' }}>Exercício de fixação pendente</span>
+                                    {/* Exercícios do treino — busca pelo dia da sessão */}
+                                    {(() => {
+                                      const dayExercises = exerciseForms.filter(ef => ef.session_keys?.includes(session.day_number))
+                                      if (!dayExercises.length) return null
+                                      return dayExercises.map(ef => {
+                                        const resp = exerciseResponses.find(r => r.exercise_id === ef.id)
+                                        return (
+                                          <div key={ef.id} style={{ background: resp?.responded ? 'var(--green-dim)' : 'var(--amber-dim)', border: `1px solid ${resp?.responded ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}`, borderRadius: 8, padding: '10px 12px', marginBottom: 8, fontSize: 11 }}>
+                                            <div style={{ fontWeight: 600, marginBottom: 4, color: resp?.responded ? 'var(--green)' : 'var(--amber)' }}>
+                                              📋 Exercício do treino {resp?.responded ? '✅' : ''}
                                             </div>
-                                            <div style={{ fontSize: 10, color: 'var(--muted2)', marginBottom: 8 }}>
-                                              Responda o formulário abaixo e depois confirme aqui.
-                                            </div>
-                                            <div className="flex gap-2">
-                                              {session.exercises[0]?.form_url && (
-                                                <a href={session.exercises[0].form_url} target="_blank" rel="noreferrer"
+                                            <div style={{ fontSize: 11, color: 'var(--muted2)', marginBottom: 8 }}>{ef.title}</div>
+                                            {resp?.responded ? (
+                                              <div style={{ fontSize: 10, color: 'var(--green)' }}>
+                                                ✓ Respondido em {new Date(resp.responded_at).toLocaleDateString('pt-BR')}
+                                              </div>
+                                            ) : (
+                                              <div className="flex gap-2">
+                                                <a href={ef.form_url} target="_blank" rel="noreferrer"
                                                   className="btn btn-primary btn-sm" style={{ fontSize: 10, textDecoration: 'none' }}>
                                                   📝 Abrir formulário →
                                                 </a>
-                                              )}
-                                              <button className="btn btn-sm" style={{ fontSize: 10, color: 'var(--green)', borderColor: 'rgba(16,185,129,0.3)' }}
-                                                onClick={async () => {
-                                                  await supabase.from('sessions').update({ exercise_done: true }).eq('id', session.id)
-                                                  await supabase.from('exercises').upsert({ session_id: session.id, analyst_id: analyst.id, form_url: session.exercises[0]?.form_url || '', submitted_at: new Date().toISOString() }, { onConflict: 'session_id,analyst_id' })
-                                                  await supabase.from('xp_history').insert({ analyst_id: analyst.id, xp_gained: 15, reason: 'exercicio_enviado', session_id: session.id })
-                                                  await supabase.from('notifications').insert({ team: analyst.team, type: 'exercise_submitted', analyst_id: analyst.id, session_id: session.id, message: `${analyst.name} respondeu o exercício — ${session.title}` })
-                                                  loadAll(true)
-                                                }}>
-                                                ✓ Já respondi
-                                              </button>
-                                            </div>
-                                          </>
-                                        )}
-                                      </div>
-                                    )}
+                                                <button className="btn btn-sm" style={{ fontSize: 10, color: 'var(--green)', borderColor: 'rgba(16,185,129,0.3)' }}
+                                                  onClick={async () => {
+                                                    await supabase.from('exercise_responses').upsert(
+                                                      { exercise_id: ef.id, analyst_id: analyst.id, responded: true, responded_at: new Date().toISOString() },
+                                                      { onConflict: 'exercise_id,analyst_id' }
+                                                    )
+                                                    await supabase.from('xp_history').insert({ analyst_id: analyst.id, xp_gained: 15, reason: 'exercicio_enviado', session_id: session.id })
+                                                    await supabase.from('notifications').insert({ team: analyst.team, type: 'exercise_submitted', analyst_id: analyst.id, session_id: session.id, message: `${analyst.name} respondeu o exercício "${ef.title}"` })
+                                                    loadAll(true)
+                                                  }}>
+                                                  ✓ Já respondi
+                                                </button>
+                                              </div>
+                                            )}
+                                          </div>
+                                        )
+                                      })
+                                    })()}
 
                                     {/* Video */}
                                     {!session.video_submissions?.length && (
