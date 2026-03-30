@@ -20,17 +20,25 @@ export default function Onboarding({ activeTeam }) {
   const [savingExercise, setSavingExercise] = useState(false)
   const [settings, setSettings] = useState(null)
   const [webhookStatus, setWebhookStatus] = useState(null)
-  const [activeTab, setActiveTab] = useState('onboarding') // 'onboarding' | 'trilhas'
+  const [activeTab, setActiveTab] = useState('onboarding') // 'onboarding' | 'trilhas' | 'exercicios'
   const [trilhas, setTrilhas] = useState([])
   const [trilhaProgress, setTrilhaProgress] = useState([])
   const [trilhaView, setTrilhaView] = useState('por_trilha') // 'por_trilha' | 'por_analista'
   const [selectedTrilha, setSelectedTrilha] = useState(null)
   const [selectedAnalystTrilha, setSelectedAnalystTrilha] = useState(null)
+  const [exercicios, setExercicios] = useState([])
+  const [exResponses, setExResponses] = useState([])
+  const [showExForm, setShowExForm] = useState(false)
+  const [editingEx, setEditingEx] = useState(null)
+  const [exForm, setExForm] = useState({ title: '', description: '', form_url: '', session_keys: [], team: 'atendimento' })
+  const [savingEx, setSavingEx] = useState(false)
+  const [confirmDeleteEx, setConfirmDeleteEx] = useState(null)
 
   const allSessions = TEAM_SESSIONS[activeTeam]
 
   useEffect(() => { loadAnalysts() }, [activeTeam])
   useEffect(() => { if (activeTab === 'trilhas') loadTrilhas() }, [activeTab, activeTeam])
+  useEffect(() => { if (activeTab === 'exercicios') loadExercicios() }, [activeTab, activeTeam])
   useEffect(() => { if (selectedId) loadSessions(selectedId) }, [selectedId])
   useEffect(() => {
     supabase.from('team_settings').select('*').eq('team', activeTeam).single()
@@ -65,6 +73,47 @@ export default function Onboarding({ activeTeam }) {
 
     setAnalysts(enriched)
     setLoading(false)
+  }
+
+  async function loadExercicios() {
+    const [{ data: ex }, { data: resp }, { data: ana }] = await Promise.all([
+      supabase.from('exercise_forms').select('*').or(`team.eq.${activeTeam},team.eq.ambos`).order('order_index').order('created_at'),
+      supabase.from('exercise_responses').select('*, analysts(name)'),
+      supabase.from('analysts').select('id, name').eq('team', activeTeam).eq('status', 'ativo'),
+    ])
+    setExercicios(ex || [])
+    setExResponses(resp || [])
+  }
+
+  async function saveEx() {
+    if (!exForm.title || !exForm.form_url) return
+    setSavingEx(true)
+    const payload = { ...exForm, team: exForm.team || activeTeam, session_keys: exForm.session_keys || [] }
+    if (editingEx) {
+      await supabase.from('exercise_forms').update(payload).eq('id', editingEx)
+    } else {
+      await supabase.from('exercise_forms').insert({ ...payload, order_index: exercicios.length })
+    }
+    setSavingEx(false)
+    setShowExForm(false)
+    setEditingEx(null)
+    setExForm({ title: '', description: '', form_url: '', session_keys: [], team: activeTeam })
+    loadExercicios()
+  }
+
+  async function deleteEx(id) {
+    await supabase.from('exercise_forms').delete().eq('id', id)
+    setConfirmDeleteEx(null)
+    loadExercicios()
+  }
+
+  function toggleExSession(sessionTitle) {
+    setExForm(f => ({
+      ...f,
+      session_keys: f.session_keys?.includes(sessionTitle)
+        ? f.session_keys.filter(k => k !== sessionTitle)
+        : [...(f.session_keys || []), sessionTitle]
+    }))
   }
 
   async function loadTrilhas() {
@@ -270,7 +319,7 @@ export default function Onboarding({ activeTeam }) {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 18, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 4, alignSelf: 'flex-start' }}>
-        {[['onboarding','📅 Onboarding'],['trilhas','🎬 Trilhas de vídeo']].map(([k,l]) => (
+        {[['onboarding','📅 Onboarding'],['trilhas','🎬 Trilhas de vídeo'],['exercicios','📋 Exercícios']].map(([k,l]) => (
           <button key={k} onClick={() => setActiveTab(k)}
             style={{ padding: '7px 16px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', fontWeight: activeTab===k ? 600 : 400,
               background: activeTab===k ? 'var(--auvo)' : 'transparent',
@@ -279,6 +328,120 @@ export default function Onboarding({ activeTeam }) {
           </button>
         ))}
       </div>
+
+      {activeTab === 'exercicios' && (
+        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <div className="flex items-center justify-between" style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 13, color: 'var(--muted2)' }}>Formulários do Google Forms vinculados às sessões</div>
+            <button className="btn btn-primary btn-sm" onClick={() => { setExForm({ title:'',description:'',form_url:'',session_keys:[],team:activeTeam }); setEditingEx(null); setShowExForm(true) }}>+ Novo exercício</button>
+          </div>
+          {exercicios.length === 0 ? (
+            <div style={{ textAlign:'center', padding:'40px 0', color:'var(--muted)' }}>
+              <div style={{ fontSize:32, marginBottom:8 }}>📋</div>
+              <div style={{ fontSize:13, color:'var(--muted2)' }}>Nenhum exercício ainda</div>
+            </div>
+          ) : (
+            <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', gap:8 }}>
+              {exercicios.map(ex => {
+                const exResp = exResponses.filter(r => r.exercise_id===ex.id && r.responded)
+                const anaAtivos = analysts.filter(a=>a.status==='ativo')
+                return (
+                  <div key={ex.id} style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'14px 16px' }}>
+                    <div className="flex items-center gap-3">
+                      <div style={{ fontSize:20 }}>📋</div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:13, fontWeight:600 }}>{ex.title}</div>
+                        {ex.description && <div style={{ fontSize:11, color:'var(--muted2)', marginTop:2 }}>{ex.description}</div>}
+                        <div style={{ display:'flex', gap:6, marginTop:6, flexWrap:'wrap', alignItems:'center' }}>
+                          {ex.session_keys?.length > 0 ? ex.session_keys.slice(0,3).map(k=>(
+                            <span key={k} style={{ fontSize:9, padding:'2px 7px', borderRadius:5, background:'var(--auvo-dim)', color:'var(--auvo)', fontWeight:600, maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', display:'inline-block' }}>{k}</span>
+                          )) : <span style={{ fontSize:9, color:'var(--muted)' }}>Sem sessão vinculada</span>}
+                          {ex.session_keys?.length > 3 && <span style={{ fontSize:9, color:'var(--muted)' }}>+{ex.session_keys.length-3}</span>}
+                          <span style={{ fontSize:10, color:exResp.length>0?'var(--green)':'var(--muted2)', marginLeft:4 }}>{exResp.length}/{anaAtivos.length} responderam</span>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <a href={ex.form_url} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ fontSize:9, color:'var(--auvo)', textDecoration:'none' }}>Ver →</a>
+                        <button className="btn btn-sm" style={{ fontSize:9 }} onClick={() => { setExForm({...ex}); setEditingEx(ex.id); setShowExForm(true) }}>✏️</button>
+                        {confirmDeleteEx===ex.id ? (
+                          <><button className="btn btn-danger btn-sm" style={{ fontSize:9 }} onClick={()=>deleteEx(ex.id)}>Sim</button><button className="btn btn-sm" style={{ fontSize:9 }} onClick={()=>setConfirmDeleteEx(null)}>Não</button></>
+                        ) : (
+                          <button className="btn btn-sm" style={{ fontSize:9, color:'var(--red)' }} onClick={()=>setConfirmDeleteEx(ex.id)}>🗑️</button>
+                        )}
+                      </div>
+                    </div>
+                    {/* Respostas */}
+                    {anaAtivos.length > 0 && (
+                      <div style={{ marginTop:12, paddingTop:10, borderTop:'1px solid var(--border)', display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(160px,1fr))', gap:6 }}>
+                        {anaAtivos.map(a => {
+                          const resp = exResponses.find(r=>r.exercise_id===ex.id&&r.analyst_id===a.id&&r.responded)
+                          return (
+                            <div key={a.id} style={{ display:'flex', alignItems:'center', gap:7, padding:'6px 8px', borderRadius:7, border:`1px solid ${resp?'rgba(16,185,129,0.2)':'var(--border)'}`, background:resp?'var(--green-dim)':'var(--surface2)', fontSize:11 }}>
+                              <div style={{ width:24, height:24, borderRadius:6, background:resp?'var(--green-dim)':'var(--auvo-dim)', color:resp?'var(--green)':'var(--auvo)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:10, flexShrink:0 }}>{a.name.charAt(0)}</div>
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <div style={{ fontSize:10, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.name.split(' ')[0]}</div>
+                                <div style={{ fontSize:9, color:resp?'var(--green)':'var(--muted)' }}>{resp?'✓ Respondido':'Pendente'}</div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Modal exercício */}
+          {showExForm && (
+            <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setShowExForm(false)}>
+              <div className="modal" style={{ width:500 }}>
+                <div className="modal-header">
+                  <div className="modal-title">{editingEx?'Editar exercício':'Novo exercício'}</div>
+                  <button className="modal-close" onClick={()=>setShowExForm(false)}>✕</button>
+                </div>
+                <div className="modal-body">
+                  <div className="form-group"><label>Título</label><input value={exForm.title} onChange={e=>setExForm(f=>({...f,title:e.target.value}))} placeholder="Ex: Fixação — Módulo PMOC" /></div>
+                  <div className="form-group"><label>Descrição (opcional)</label><input value={exForm.description} onChange={e=>setExForm(f=>({...f,description:e.target.value}))} placeholder="Sobre o que é esse exercício?" /></div>
+                  <div className="form-group">
+                    <label>Link do Google Forms</label>
+                    <input value={exForm.form_url} onChange={e=>setExForm(f=>({...f,form_url:e.target.value}))} placeholder="https://forms.google.com/..." style={{ fontFamily:'monospace', fontSize:12 }} />
+                    {exForm.form_url && <a href={exForm.form_url} target="_blank" rel="noreferrer" style={{ fontSize:10, color:'var(--auvo)', display:'block', marginTop:4 }}>Testar link →</a>}
+                  </div>
+                  <div className="form-group">
+                    <label>Disponível para</label>
+                    <div className="flex gap-2">
+                      {[['atendimento','🎧 Atendimento'],['vendas','💼 Vendas'],['ambos','🌐 Ambos']].map(([k,l])=>(
+                        <button key={k} onClick={()=>setExForm(f=>({...f,team:k}))} style={{ flex:1, padding:'7px', borderRadius:7, cursor:'pointer', fontFamily:'inherit', fontSize:11, border:`1px solid ${exForm.team===k?'var(--auvo-border)':'var(--border)'}`, background:exForm.team===k?'var(--auvo-dim)':'transparent', color:exForm.team===k?'var(--auvo)':'var(--muted2)' }}>{l}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label>Vincular às sessões</label>
+                    <div style={{ maxHeight:180, overflowY:'auto', display:'flex', flexDirection:'column', gap:3 }}>
+                      {allSessions.map(s=>{
+                        const isChecked = exForm.session_keys?.includes(s.title)||false
+                        return (
+                          <label key={`${s.day}-${s.id}`} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 8px', borderRadius:6, border:`1px solid ${isChecked?'var(--auvo-border)':'var(--border)'}`, cursor:'pointer', marginBottom:0, background:isChecked?'var(--auvo-dim)':'transparent', fontSize:11 }}>
+                            <input type="checkbox" checked={isChecked} onChange={()=>toggleExSession(s.title)} />
+                            <span style={{ fontSize:9, padding:'1px 6px', borderRadius:4, background:'var(--surface3)', color:'var(--muted)', marginRight:2, flexShrink:0 }}>Dia {s.day}</span>
+                            {s.title}
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button className="btn" onClick={()=>{setShowExForm(false);setEditingEx(null)}}>Cancelar</button>
+                  <button className="btn btn-primary" onClick={saveEx} disabled={savingEx||!exForm.title||!exForm.form_url}>{savingEx?'Salvando...':editingEx?'Salvar':'Criar exercício'}</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {activeTab === 'trilhas' && (
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
