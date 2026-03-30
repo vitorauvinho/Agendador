@@ -12,6 +12,7 @@ import Trilha from './pages/Trilha.jsx'
 import MinhaGamificacao from './pages/MinhaGamificacao.jsx'
 import Estudar from './pages/Estudar.jsx'
 import Trilhas from './pages/Trilhas.jsx'
+import Exercicios from './pages/Exercicios.jsx'
 import MinhasTrilhas from './pages/MinhasTrilhas.jsx'
 import { supabase } from './lib/supabase.js'
 
@@ -55,6 +56,7 @@ export default function App() {
               <Route path="/avaliacoes"     element={<Avaliacoes    activeTeam={activeTeam} />} />
               <Route path="/gamificacao"    element={<Gamificacao   activeTeam={activeTeam} />} />
               <Route path="/trilhas"       element={<Trilhas       activeTeam={activeTeam} />} />
+              <Route path="/exercicios"    element={<Exercicios    activeTeam={activeTeam} />} />
               <Route path="/rh"             element={<PainelRH      activeTeam={activeTeam} />} />
               <Route path="/configuracoes"  element={<Configuracoes activeTeam={activeTeam} />} />
             </Routes>
