@@ -1,250 +1,183 @@
 import { useState, useEffect } from 'react'
-import { supabase, TEAM_SESSIONS } from '../lib/supabase'
+import { useParams } from 'react-router-dom'
+import AnalistaLayout from '../components/AnalistaLayout.jsx'
+import { supabase } from '../lib/supabase'
 
-const EMPTY_FORM = { title: '', description: '', form_url: '', session_keys: [], team: 'atendimento', order_index: 0 }
+const CONTENT_TYPES = [
+  { key: 'youtube',    label: 'YouTube',    icon: '▶️' },
+  { key: 'pdf',        label: 'Trein. Gravados', icon: '🎬' },
+  { key: 'notebooklm', label: 'NotebookLM', icon: '🤖' },
+  { key: 'texto',      label: 'Texto',      icon: '📝' },
+  { key: 'playbook',   label: 'Playbook',   icon: '📘' },
+  { key: 'link_util',  label: 'Link útil',  icon: '🔗' },
+]
 
-export default function Exercicios({ activeTeam }) {
-  const [exercises, setExercises] = useState([])
-  const [responses, setResponses] = useState([])
-  const [analysts, setAnalysts] = useState([])
+const TYPE_COLORS = {
+  youtube:    { bg: 'var(--red-dim)',   color: 'var(--red)' },
+  pdf:        { bg: 'var(--blue-dim)',  color: 'var(--blue)' },
+  notebooklm: { bg: 'var(--auvo-dim)', color: 'var(--auvo)' },
+  texto:      { bg: 'var(--green-dim)', color: 'var(--green)' },
+  playbook:   { bg: 'var(--amber-dim)', color: 'var(--amber)' },
+  link_util:  { bg: 'var(--teal-dim)', color: 'var(--teal)' },
+}
+
+export default function Estudar() {
+  const { token } = useParams()
+  const [analyst, setAnalyst] = useState(null)
+  const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
-  const [showForm, setShowForm] = useState(false)
-  const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState(EMPTY_FORM)
-  const [saving, setSaving] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(null)
-  const [expanded, setExpanded] = useState(null)
+  const [filter, setFilter] = useState('todos')
+  const [preview, setPreview] = useState(null)
 
-  const allSessions = TEAM_SESSIONS[activeTeam]
+  useEffect(() => { loadAll() }, [token])
 
-  useEffect(() => { load() }, [activeTeam])
-
-  async function load() {
-    setLoading(true)
-    const [{ data: ex }, { data: resp }, { data: ana }] = await Promise.all([
-      supabase.from('exercise_forms').select('*')
-        .or(`team.eq.${activeTeam},team.eq.ambos`)
-        .order('order_index').order('created_at'),
-      supabase.from('exercise_responses').select('*, analysts(name)'),
-      supabase.from('analysts').select('id, name').eq('team', activeTeam).eq('status', 'ativo'),
-    ])
-    setExercises(ex || [])
-    setResponses(resp || [])
-    setAnalysts(ana || [])
+  async function loadAll() {
+    const { data: a } = await supabase.from('analysts').select('*').eq('access_token', token).single()
+    if (!a) { setLoading(false); return }
+    setAnalyst(a)
+    const { data: content } = await supabase
+      .from('content_items').select('*')
+      .or(`team.eq.${a.team},team.eq.ambos`)
+      .order('order_index').order('created_at', { ascending: false })
+    setItems(content || [])
     setLoading(false)
   }
 
-  async function save() {
-    if (!form.title || !form.form_url) return
-    setSaving(true)
-    if (editing) {
-      await supabase.from('exercise_forms').update(form).eq('id', editing)
-    } else {
-      await supabase.from('exercise_forms').insert({ ...form, team: form.team || activeTeam, order_index: exercises.length })
-    }
-    setSaving(false)
-    setShowForm(false)
-    setEditing(null)
-    setForm(EMPTY_FORM)
-    load()
+  function getYoutubeId(url) {
+    const match = url?.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/)
+    return match ? match[1] : null
   }
 
-  async function deleteEx(id) {
-    await supabase.from('exercise_forms').delete().eq('id', id)
-    setConfirmDelete(null)
-    load()
-  }
+  const typeInfo = (type) => CONTENT_TYPES.find(t => t.key === type) || CONTENT_TYPES[0]
+  const filtered = filter === 'todos' ? items : items.filter(i => i.type === filter)
 
-  function toggleSession(sessionKey) {
-    setForm(f => ({
-      ...f,
-      session_keys: f.session_keys?.includes(sessionKey)
-        ? f.session_keys.filter(k => k !== sessionKey)
-        : [...(f.session_keys || []), sessionKey]
-    }))
-  }
+  if (loading) return (
+    <div className="loading-screen">
+      <div className="loading-logo">A</div>
+      <div className="spinner" />
+    </div>
+  )
 
-  function openEdit(ex) {
-    setForm({ ...ex })
-    setEditing(ex.id)
-    setShowForm(true)
-  }
-
-  function getResponsesFor(exId) {
-    return responses.filter(r => r.exercise_id === exId && r.responded)
-  }
+  if (!analyst) return (
+    <div className="loading-screen">
+      <div style={{ fontSize: 36 }}>🔒</div>
+      <div style={{ fontSize: 16, color: 'var(--muted2)', marginTop: 8 }}>Link inválido</div>
+    </div>
+  )
 
   return (
-    <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '22px 24px' }}>
+    <>
+      <AnalistaLayout analystName={analyst.name} analystTeam={analyst.team}>
+        <div style={{ padding: '24px', maxWidth: 860, margin: '0 auto' }}>
 
-      <div className="flex items-center justify-between" style={{ marginBottom: 18 }}>
-        <div>
-          <div style={{ fontSize: 20, fontWeight: 700 }}>
-            Exercícios <span style={{ color: 'var(--auvo)' }}>{activeTeam === 'atendimento' ? 'Atendimento' : 'Vendas'}</span>
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--muted2)', marginTop: 2 }}>
-            Formulários do Google Forms vinculados às sessões
-          </div>
-        </div>
-        <button className="btn btn-primary" onClick={() => { setForm({ ...EMPTY_FORM, team: activeTeam }); setEditing(null); setShowForm(true) }}>
-          + Novo exercício
-        </button>
-      </div>
-
-      {loading ? (
-        <div className="flex items-center" style={{ justifyContent: 'center', flex: 1 }}><div className="spinner" /></div>
-      ) : exercises.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--muted)' }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
-          <div style={{ fontSize: 14, color: 'var(--muted2)', marginBottom: 6 }}>Nenhum exercício cadastrado ainda</div>
-          <div style={{ fontSize: 12 }}>Crie exercícios e vincule-os às sessões do cronograma</div>
-        </div>
-      ) : (
-        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {exercises.map(ex => {
-            const exResponses = getResponsesFor(ex.id)
-            const isExpanded = expanded === ex.id
-            return (
-              <div key={ex.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-                {/* Header */}
-                <div style={{ padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12 }}
-                  onClick={() => setExpanded(isExpanded ? null : ex.id)}>
-                  <div style={{ width: 36, height: 36, borderRadius: 9, background: 'var(--auvo-dim)', color: 'var(--auvo)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>📋</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{ex.title}</div>
-                    {ex.description && <div style={{ fontSize: 11, color: 'var(--muted2)', marginTop: 2 }}>{ex.description}</div>}
-                    <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                      {ex.session_keys?.length > 0 ? ex.session_keys.slice(0,3).map(k => (
-                        <span key={k} style={{ fontSize: 9, padding: '2px 7px', borderRadius: 5, background: 'var(--auvo-dim)', color: 'var(--auvo)', fontWeight: 600, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{k}</span>
-                      )) : (
-                        <span style={{ fontSize: 9, color: 'var(--muted)' }}>Sem sessão vinculada</span>
-                      )}
-                      {ex.session_keys?.length > 3 && <span style={{ fontSize: 9, color: 'var(--muted)' }}>+{ex.session_keys.length - 3}</span>}
-                      <span style={{ fontSize: 10, color: exResponses.length > 0 ? 'var(--green)' : 'var(--muted2)', marginLeft: 4 }}>
-                        {exResponses.length}/{analysts.length} responderam
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex gap-2" onClick={e => e.stopPropagation()}>
-                    <a href={ex.form_url} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ fontSize: 9, color: 'var(--auvo)', textDecoration: 'none' }}>Ver forms →</a>
-                    <button className="btn btn-sm" style={{ fontSize: 9 }} onClick={() => openEdit(ex)}>✏️</button>
-                    {confirmDelete === ex.id ? (
-                      <>
-                        <button className="btn btn-danger btn-sm" style={{ fontSize: 9 }} onClick={() => deleteEx(ex.id)}>Sim</button>
-                        <button className="btn btn-sm" style={{ fontSize: 9 }} onClick={() => setConfirmDelete(null)}>Não</button>
-                      </>
-                    ) : (
-                      <button className="btn btn-sm" style={{ fontSize: 9, color: 'var(--red)' }} onClick={() => setConfirmDelete(ex.id)}>🗑️</button>
-                    )}
-                    <span style={{ fontSize: 12, color: 'var(--muted)', marginLeft: 4 }}>{isExpanded ? '▲' : '▼'}</span>
-                  </div>
-                </div>
-
-                {/* Expanded — responses */}
-                {isExpanded && (
-                  <div style={{ borderTop: '1px solid var(--border)', padding: '14px 16px', background: 'var(--surface2)' }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted2)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                      Respostas dos analistas
-                    </div>
-                    {analysts.length === 0 ? (
-                      <div style={{ fontSize: 12, color: 'var(--muted)' }}>Nenhum analista ativo</div>
-                    ) : (
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
-                        {analysts.map(a => {
-                          const resp = responses.find(r => r.exercise_id === ex.id && r.analyst_id === a.id && r.responded)
-                          return (
-                            <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, border: `1px solid ${resp ? 'rgba(16,185,129,0.2)' : 'var(--border)'}`, background: resp ? 'var(--green-dim)' : 'var(--surface)' }}>
-                              <div style={{ width: 28, height: 28, borderRadius: 7, background: resp ? 'var(--green-dim)' : 'var(--auvo-dim)', color: resp ? 'var(--green)' : 'var(--auvo)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 11, flexShrink: 0 }}>
-                                {a.name.charAt(0)}
-                              </div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 11, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name.split(' ')[0]}</div>
-                                <div style={{ fontSize: 9, color: resp ? 'var(--green)' : 'var(--muted)' }}>
-                                  {resp ? `✓ ${new Date(resp.responded_at).toLocaleDateString('pt-BR')}` : 'Pendente'}
-                                </div>
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Modal: Novo/Editar exercício */}
-      {showForm && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowForm(false)}>
-          <div className="modal" style={{ width: 500 }}>
-            <div className="modal-header">
-              <div className="modal-title">{editing ? 'Editar exercício' : 'Novo exercício'}</div>
-              <button className="modal-close" onClick={() => setShowForm(false)}>✕</button>
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>
+              Seus <span style={{ color: 'var(--auvo)' }}>materiais</span>
             </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label>Título do exercício</label>
-                <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                  placeholder="Ex: Fixação — Módulo PMOC" />
-              </div>
-              <div className="form-group">
-                <label>Descrição (opcional)</label>
-                <input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                  placeholder="Sobre o que é esse exercício?" />
-              </div>
-              <div className="form-group">
-                <label>Link do Google Forms</label>
-                <input value={form.form_url} onChange={e => setForm(f => ({ ...f, form_url: e.target.value }))}
-                  placeholder="https://forms.google.com/..." style={{ fontFamily: 'monospace', fontSize: 12 }} />
-                {form.form_url && (
-                  <div style={{ marginTop: 6 }}>
-                    <a href={form.form_url} target="_blank" rel="noreferrer" style={{ fontSize: 10, color: 'var(--auvo)' }}>Testar link →</a>
-                  </div>
-                )}
-              </div>
-              <div className="form-group">
-                <label>Disponível para</label>
-                <div className="flex gap-2">
-                  {[['atendimento', '🎧 Atendimento'], ['vendas', '💼 Vendas'], ['ambos', '🌐 Ambos']].map(([k, l]) => (
-                    <button key={k} onClick={() => setForm(f => ({ ...f, team: k }))}
-                      style={{ flex: 1, padding: '8px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit', fontSize: 11,
-                        border: `1px solid ${form.team === k ? 'var(--auvo-border)' : 'var(--border)'}`,
-                        background: form.team === k ? 'var(--auvo-dim)' : 'transparent',
-                        color: form.team === k ? 'var(--auvo)' : 'var(--muted2)' }}>
-                      {l}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="form-group">
-                <label>Vincular às sessões</label>
-                <div style={{ maxHeight: 180, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  {allSessions.map(s => {
-                    const sessionKey = s.title
-                    const isChecked = form.session_keys?.includes(sessionKey) || false
-                    return (
-                      <label key={`${s.day}-${s.id}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, border: `1px solid ${isChecked ? 'var(--auvo-border)' : 'var(--border)'}`, cursor: 'pointer', marginBottom: 0, background: isChecked ? 'var(--auvo-dim)' : 'transparent', fontSize: 11 }}>
-                        <input type="checkbox" checked={isChecked} onChange={() => toggleSession(sessionKey)} />
-                        <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, background: 'var(--surface3)', color: 'var(--muted)', marginRight: 2, flexShrink: 0 }}>Dia {s.day}</span>
-                        {s.title}
-                      </label>
-                    )
-                  })}
-                </div>
-              </div>
+            <div style={{ fontSize: 12, color: 'var(--muted2)' }}>
+              {analyst.team === 'atendimento' ? '🎧 Atendimento' : '💼 Vendas'} · {items.length} conteúdo{items.length !== 1 ? 's' : ''} disponível{items.length !== 1 ? 'is' : ''}
             </div>
-            <div className="modal-footer">
-              <button className="btn" onClick={() => { setShowForm(false); setEditing(null); setForm(EMPTY_FORM) }}>Cancelar</button>
-              <button className="btn btn-primary" onClick={save} disabled={saving || !form.title || !form.form_url}>
-                {saving ? 'Salvando...' : editing ? 'Salvar alterações' : 'Criar exercício'}
+          </div>
+
+          <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
+            <button className={`pill ${filter === 'todos' ? 'active' : ''}`} onClick={() => setFilter('todos')}>Todos ({items.length})</button>
+            {CONTENT_TYPES.filter(t => items.some(i => i.type === t.key)).map(t => (
+              <button key={t.key} className={`pill ${filter === t.key ? 'active' : ''}`} onClick={() => setFilter(t.key)}>
+                {t.icon} {t.label} ({items.filter(i => i.type === t.key).length})
               </button>
+            ))}
+          </div>
+
+          {filtered.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--muted)' }}>
+              <div style={{ fontSize: 36, marginBottom: 12 }}>📚</div>
+              <div style={{ fontSize: 14, color: 'var(--muted2)' }}>Nenhum conteúdo disponível ainda</div>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
+              {filtered.map(item => {
+                const t = typeInfo(item.type)
+                const tc = TYPE_COLORS[item.type] || TYPE_COLORS.youtube
+                const ytId = item.type === 'youtube' ? getYoutubeId(item.url) : null
+                return (
+                  <div key={item.id}
+                    style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', background: 'var(--surface)', transition: 'all 0.15s', cursor: 'pointer' }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border2)'; e.currentTarget.style.transform = 'translateY(-2px)' }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.transform = 'translateY(0)' }}
+                    onClick={() => {
+                      if (item.type === 'youtube' || item.type === 'texto') setPreview(item)
+                      else if (item.url) window.open(item.url, '_blank')
+                    }}
+                  >
+                    <div style={{ height: 90, background: 'var(--surface2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, position: 'relative' }}>
+                      {ytId ? (
+                        <img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
+                      ) : (
+                        <span>{t.icon}</span>
+                      )}
+                      <div style={{ position: 'absolute', top: 6, right: 6, fontSize: 8, padding: '2px 6px', borderRadius: 4, fontWeight: 700, background: tc.bg, color: tc.color }}>
+                        {t.label.toUpperCase()}
+                      </div>
+                    </div>
+                    <div style={{ padding: '12px 14px' }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.3, marginBottom: 4 }}>{item.title}</div>
+                      {item.description && <div style={{ fontSize: 10, color: 'var(--muted2)', lineHeight: 1.5, marginBottom: 8 }}>{item.description}</div>}
+                      {item.session_keys?.length > 0 && (
+                        <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', marginBottom: 8 }}>
+                          {item.session_keys.slice(0, 4).map(k => (
+                            <span key={k} style={{ fontSize: 8, padding: '2px 5px', borderRadius: 4, background: 'var(--auvo-dim)', color: 'var(--auvo)' }}>Dia {k}</span>
+                          ))}
+                        </div>
+                      )}
+                      <div style={{ fontSize: 10, color: 'var(--auvo)', fontWeight: 500 }}>
+                        {item.type === 'youtube' && '▶ Assistir'}
+                        {item.type === 'pdf' && '🎬 Assistir gravação'}
+                        {item.type === 'notebooklm' && '🤖 Abrir NotebookLM'}
+                        {item.type === 'texto' && '📝 Ler'}
+                        {item.type === 'playbook' && '📘 Abrir playbook'}
+                        {item.type === 'link_util' && '🔗 Acessar'}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </AnalistaLayout>
+
+      {preview && preview.type === 'youtube' && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setPreview(null)}>
+          <div className="modal" style={{ width: 700 }}>
+            <div className="modal-header">
+              <div className="modal-title">{preview.title}</div>
+              <button className="modal-close" onClick={() => setPreview(null)}>✕</button>
+            </div>
+            <div style={{ padding: 20 }}>
+              {getYoutubeId(preview.url) ? (
+                <iframe width="100%" height="380" src={`https://www.youtube.com/embed/${getYoutubeId(preview.url)}`}
+                  frameBorder="0" allowFullScreen style={{ borderRadius: 8 }} title={preview.title} />
+              ) : (
+                <div style={{ textAlign: 'center', color: 'var(--muted)', padding: 40 }}>URL inválida</div>
+              )}
             </div>
           </div>
         </div>
       )}
-    </div>
+
+      {preview && preview.type === 'texto' && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setPreview(null)}>
+          <div className="modal" style={{ width: 600 }}>
+            <div className="modal-header">
+              <div className="modal-title">{preview.title}</div>
+              <button className="modal-close" onClick={() => setPreview(null)}>✕</button>
+            </div>
+            <div style={{ padding: 24, fontSize: 13, lineHeight: 1.8, color: 'var(--muted2)', whiteSpace: 'pre-wrap', maxHeight: '60vh', overflowY: 'auto' }}>
+              {preview.body || 'Sem conteúdo.'}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
