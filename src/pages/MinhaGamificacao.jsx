@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
+import AnalistaLayout from '../components/AnalistaLayout.jsx'
 import { supabase, getLevelInfo, LEVEL_NAMES } from '../lib/supabase'
 
 const BADGES = [
@@ -99,7 +100,8 @@ export default function MinhaGamificacao() {
   const myRankPos = ranking.findIndex(r => r.id === analyst.id)
 
   return (
-    <div style={{ background: 'var(--bg)', minHeight: '100vh', padding: '24px', maxWidth: 900, margin: '0 auto' }}>
+    <AnalistaLayout analystName={analyst?.name}>
+    <div style={{ padding: '24px', maxWidth: 860, margin: '0 auto' }}>
 
       {/* Hero */}
       <div style={{ background: 'linear-gradient(135deg, var(--auvo), var(--auvo-dark))', borderRadius: 16, padding: 22, marginBottom: 20, color: '#fff' }}>
@@ -207,5 +209,7 @@ export default function MinhaGamificacao() {
         </div>
       </div>
     </div>
+    </div>
+    </AnalistaLayout>
   )
 }
