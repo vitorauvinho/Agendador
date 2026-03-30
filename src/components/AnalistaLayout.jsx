@@ -9,27 +9,43 @@ const NAV_ITEMS = [
   { path: '/gamificacao',  icon: '🏆', label: 'Gamificação' },
 ]
 
-export default function AnalistaLayout({ children, analystName }) {
+export default function AnalistaLayout({ children, analystName, analystTeam }) {
   const { token } = useParams()
   const location = useLocation()
   const [logoUrl, setLogoUrl] = useState('')
   const [companyName, setCompanyName] = useState('Auvo')
 
   useEffect(() => {
-    // Tenta carregar logo das configurações
-    supabase.from('team_settings').select('logo_url, company_name').limit(1).single()
-      .then(({ data }) => {
-        if (data?.logo_url) setLogoUrl(data.logo_url)
-        if (data?.company_name) setCompanyName(data.company_name)
-      })
-  }, [])
+    async function loadSettings() {
+      // Se não temos o time ainda, busca pelo token
+      let team = analystTeam
+      if (!team && token) {
+        const { data: a } = await supabase
+          .from('analysts').select('team').eq('access_token', token).single()
+        team = a?.team
+      }
+      if (!team) return
+
+      const { data } = await supabase
+        .from('team_settings')
+        .select('logo_url, company_name')
+        .eq('team', team)
+        .single()
+
+      if (data?.logo_url) setLogoUrl(data.logo_url)
+      if (data?.company_name) setCompanyName(data.company_name)
+    }
+    loadSettings()
+  }, [token, analystTeam])
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg)' }}>
       <aside style={{ width: 200, flexShrink: 0, background: 'var(--surface)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', padding: '18px 0' }}>
         <div style={{ padding: '0 16px 16px', borderBottom: '1px solid var(--border)', marginBottom: 14 }}>
           {logoUrl ? (
-            <img src={logoUrl} alt={companyName} style={{ width: 36, height: 36, borderRadius: 9, objectFit: 'cover', marginBottom: 8 }} />
+            <img src={logoUrl} alt={companyName}
+              style={{ width: 36, height: 36, borderRadius: 9, objectFit: 'cover', marginBottom: 8 }}
+              onError={() => setLogoUrl('')} />
           ) : (
             <div style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--auvo)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 15, marginBottom: 8 }}>
               {companyName.charAt(0)}
