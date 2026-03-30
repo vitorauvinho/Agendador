@@ -11,20 +11,25 @@ export default function Revisoes({ activeTeam }) {
   async function loadReviews() {
     setLoading(true)
 
-    // Exercícios pendentes
-    const { data: exercises } = await supabase
-      .from('exercises')
-      .select('*, sessions(title, day_number, type), analysts(name, team)')
+    // Busca analistas do time atual
+    const { data: teamAnalysts } = await supabase
+      .from('analysts').select('id, name').eq('team', activeTeam)
+    const analystIds = (teamAnalysts || []).map(a => a.id)
+
+    // Exercícios respondidos pelos analistas do time (via exercise_responses)
+    const { data: exercises } = analystIds.length ? await supabase
+      .from('exercise_responses')
+      .select('*, exercise_forms(title, form_url), analysts(name, team)')
+      .eq('responded', true)
       .eq('reviewed', false)
-      .not('submitted_at', 'is', null)
-      .eq('analysts.team', activeTeam)
+      .in('analyst_id', analystIds) : { data: [] }
 
     // Vídeos pendentes
-    const { data: videos } = await supabase
+    const { data: videos } = analystIds.length ? await supabase
       .from('video_submissions')
       .select('*, sessions(title, day_number), analysts(name, team)')
       .eq('reviewed', false)
-      .eq('analysts.team', activeTeam)
+      .in('analyst_id', analystIds) : { data: [] }
 
     // Notificações de saída
     const { data: exits } = await supabase
@@ -39,18 +44,16 @@ export default function Revisoes({ activeTeam }) {
       ...(exercises || []).filter(e => e.analysts).map(e => ({ ...e, kind: 'exercise' })),
       ...(videos || []).filter(v => v.analysts).map(v => ({ ...v, kind: 'video' })),
       ...(exits || []).map(n => ({ ...n, kind: 'exit' })),
-    ].sort((a, b) => new Date(b.submitted_at || b.created_at) - new Date(a.submitted_at || a.created_at))
+    ].sort((a, b) => new Date(b.responded_at || b.submitted_at || b.created_at) - new Date(a.responded_at || a.submitted_at || a.created_at))
 
-    const filtered = filter === 'todos' ? all
-      : all.filter(i => i.kind === filter)
-
+    const filtered = filter === 'todos' ? all : all.filter(i => i.kind === filter)
     setItems(filtered)
     setLoading(false)
   }
 
   async function markReviewed(item) {
     if (item.kind === 'exercise') {
-      await supabase.from('exercises').update({ reviewed: true, reviewed_at: new Date().toISOString(), reviewed_by: 'enablement' }).eq('id', item.id)
+      await supabase.from('exercise_responses').update({ reviewed: true, reviewed_at: new Date().toISOString(), reviewed_by: 'enablement' }).eq('id', item.id)
     } else if (item.kind === 'video') {
       await supabase.from('video_submissions').update({ reviewed: true, reviewed_at: new Date().toISOString(), reviewed_by: 'enablement' }).eq('id', item.id)
     } else if (item.kind === 'exit') {
@@ -111,7 +114,7 @@ export default function Revisoes({ activeTeam }) {
               </span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 3 }}>
-                  {item.kind === 'exercise' && `Exercício enviado — ${item.analysts?.name}`}
+                  {item.kind === 'exercise' && `Exercício respondido — ${item.analysts?.name}`}
                   {item.kind === 'video'    && `Vídeo enviado — ${item.analysts?.name}`}
                   {item.kind === 'exit'     && `Saída registrada — ${item.analysts?.name}`}
                 </div>
@@ -131,9 +134,12 @@ export default function Revisoes({ activeTeam }) {
                   </div>
                 )}
 
-                {item.kind === 'exercise' && item.form_url && (
+                {item.kind === 'exercise' && item.exercise_forms?.form_url && (
                   <div style={{ marginBottom: 8 }}>
-                    <a href={item.form_url} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ fontSize: 9, color: 'var(--auvo)', textDecoration: 'none' }}>
+                    <div style={{ fontSize: 11, color: 'var(--muted2)', marginBottom: 4 }}>
+                      📋 {item.exercise_forms?.title}
+                    </div>
+                    <a href={item.exercise_forms.form_url} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ fontSize: 9, color: 'var(--auvo)', textDecoration: 'none' }}>
                       Ver formulário →
                     </a>
                   </div>
