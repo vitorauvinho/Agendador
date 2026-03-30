@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
 const EMOJIS = ['', '😞', '😐', '😊', '🤩']
-const EMOJI_LABELS = ['', 'Ruim', 'Regular', 'Bom', 'Ótimo']
+const EMOJI_LABELS = ['', 'Ruim', 'Regular', 'Bom', 'Muito bom', 'Ótimo']
 
 export default function Avaliacoes({ activeTeam }) {
   const [ratings, setRatings] = useState([])
@@ -42,7 +42,7 @@ export default function Avaliacoes({ activeTeam }) {
     ? (ratings.reduce((s, r) => s + r.rating, 0) / ratings.length).toFixed(1)
     : null
 
-  const distribution = [1,2,3,4].map(score => ({
+  const distribution = [1,2,3,4,5].map(score => ({
     score,
     count: ratings.filter(r => r.rating === score).length,
     pct: ratings.length ? Math.round(ratings.filter(r => r.rating === score).length / ratings.length * 100) : 0
@@ -59,7 +59,7 @@ export default function Avaliacoes({ activeTeam }) {
   })
   const worstSessions = Object.values(sessionAvgs)
     .map(s => ({ ...s, avg: s.sum / s.count }))
-    .filter(s => s.avg < 3)
+    .filter(s => s.avg < 3.5)
     .sort((a, b) => a.avg - b.avg)
     .slice(0, 3)
 
