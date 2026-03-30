@@ -17,10 +17,17 @@ export default function Onboarding({ activeTeam }) {
   const [confirmUncheck, setConfirmUncheck] = useState(null) // session id to uncheck
   const [settings, setSettings] = useState(null)
   const [webhookStatus, setWebhookStatus] = useState(null)
+  const [activeTab, setActiveTab] = useState('onboarding') // 'onboarding' | 'trilhas'
+  const [trilhas, setTrilhas] = useState([])
+  const [trilhaProgress, setTrilhaProgress] = useState([])
+  const [trilhaView, setTrilhaView] = useState('por_trilha') // 'por_trilha' | 'por_analista'
+  const [selectedTrilha, setSelectedTrilha] = useState(null)
+  const [selectedAnalystTrilha, setSelectedAnalystTrilha] = useState(null)
 
   const allSessions = TEAM_SESSIONS[activeTeam]
 
   useEffect(() => { loadAnalysts() }, [activeTeam])
+  useEffect(() => { if (activeTab === 'trilhas') loadTrilhas() }, [activeTab, activeTeam])
   useEffect(() => { if (selectedId) loadSessions(selectedId) }, [selectedId])
   useEffect(() => {
     supabase.from('team_settings').select('*').eq('team', activeTeam).single()
@@ -55,6 +62,24 @@ export default function Onboarding({ activeTeam }) {
 
     setAnalysts(enriched)
     setLoading(false)
+  }
+
+  async function loadTrilhas() {
+    const { data: trails } = await supabase
+      .from('video_trails').select('*, video_trail_items(id)')
+      .or(`team.eq.${activeTeam},team.eq.ambos`).order('order_index')
+
+    const { data: activeAnalysts } = await supabase
+      .from('analysts').select('id, name').eq('team', activeTeam).eq('status', 'ativo')
+
+    const { data: prog } = await supabase
+      .from('video_trail_progress').select('*')
+
+    setTrilhas(trails || [])
+    setTrilhaProgress(prog || [])
+
+    if (!selectedTrilha && trails?.length) setSelectedTrilha(trails[0])
+    if (!selectedAnalystTrilha && activeAnalysts?.length) setSelectedAnalystTrilha(activeAnalysts[0])
   }
 
   async function loadSessions(analystId) {
@@ -220,6 +245,144 @@ export default function Onboarding({ activeTeam }) {
         </div>
       </div>
 
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 18, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 4, alignSelf: 'flex-start' }}>
+        {[['onboarding','📅 Onboarding'],['trilhas','🎬 Trilhas de vídeo']].map(([k,l]) => (
+          <button key={k} onClick={() => setActiveTab(k)}
+            style={{ padding: '7px 16px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', fontWeight: activeTab===k ? 600 : 400,
+              background: activeTab===k ? 'var(--auvo)' : 'transparent',
+              color: activeTab===k ? '#fff' : 'var(--muted2)', transition: 'all 0.15s' }}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'trilhas' && (
+        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          {/* View toggle */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
+            {[['por_trilha','Por trilha'],['por_analista','Por analista']].map(([k,l]) => (
+              <button key={k} className={`pill ${trilhaView===k?'active':''}`} onClick={() => setTrilhaView(k)}>{l}</button>
+            ))}
+          </div>
+
+          {trilhas.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--muted)' }}>
+              <div style={{ fontSize: 32, marginBottom: 10 }}>🎬</div>
+              <div style={{ fontSize: 13, color: 'var(--muted2)' }}>Nenhuma trilha criada ainda</div>
+            </div>
+          ) : trilhaView === 'por_trilha' ? (
+            <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 14, flex: 1, overflow: 'hidden' }}>
+              {/* Trail list */}
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 12, overflowY: 'auto' }}>
+                {trilhas.map(t => (
+                  <div key={t.id} onClick={() => setSelectedTrilha(t)}
+                    style={{ padding: '9px 11px', borderRadius: 8, cursor: 'pointer', marginBottom: 5,
+                      border: `1px solid ${selectedTrilha?.id===t.id?'var(--auvo-border)':'var(--border)'}`,
+                      background: selectedTrilha?.id===t.id?'var(--auvo-dim)':'var(--surface2)' }}>
+                    <div style={{ fontSize: 12, fontWeight: 600 }}>{t.title}</div>
+                    <div style={{ fontSize: 10, color: 'var(--muted2)', marginTop: 2 }}>{t.video_trail_items?.length || 0} vídeos</div>
+                  </div>
+                ))}
+              </div>
+              {/* Progress per trail */}
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, overflowY: 'auto' }}>
+                {selectedTrilha && (() => {
+                  const trailItems = selectedTrilha.video_trail_items || []
+                  const total = trailItems.length
+                  const analystRows = analysts.filter(a => a.status === 'ativo').map(a => {
+                    const watched = trailItems.filter(i => trilhaProgress.find(p => p.analyst_id===a.id && p.item_id===i.id && p.watched)).length
+                    const lastWatch = trilhaProgress.filter(p => p.analyst_id===a.id && trailItems.find(i=>i.id===p.item_id) && p.watched_at).sort((x,y)=>new Date(y.watched_at)-new Date(x.watched_at))[0]
+                    return { ...a, watched, pct: total ? Math.round(watched/total*100) : 0, lastWatch }
+                  })
+                  return (
+                    <>
+                      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>{selectedTrilha.title}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted2)', marginBottom: 16 }}>{total} vídeos · {analystRows.filter(a=>a.pct===100).length} analistas concluíram</div>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                        <thead>
+                          <tr>
+                            {['Analista','Progresso','Vídeos','Último acesso'].map(h=>(
+                              <th key={h} style={{ fontSize: 9, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '6px 10px', borderBottom: '1px solid var(--border)', textAlign: 'left', fontWeight: 500 }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {analystRows.map(a => (
+                            <tr key={a.id}>
+                              <td style={{ padding: '10px', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>{a.name}</td>
+                              <td style={{ padding: '10px', borderBottom: '1px solid var(--border)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <div style={{ width: 80, background: 'rgba(255,255,255,0.05)', borderRadius: 3, height: 5, overflow: 'hidden' }}>
+                                    <div style={{ height: '100%', borderRadius: 3, background: a.pct===100?'var(--green)':'var(--auvo)', width: `${a.pct}%` }} />
+                                  </div>
+                                  <span style={{ fontSize: 10, color: a.pct===100?'var(--green)':'var(--auvo)', fontWeight: 600 }}>{a.pct}%</span>
+                                </div>
+                              </td>
+                              <td style={{ padding: '10px', borderBottom: '1px solid var(--border)', color: 'var(--muted2)' }}>{a.watched}/{total}</td>
+                              <td style={{ padding: '10px', borderBottom: '1px solid var(--border)', color: 'var(--muted)' }}>
+                                {a.lastWatch ? new Date(a.lastWatch.watched_at).toLocaleDateString('pt-BR') : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </>
+                  )
+                })()}
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 14, flex: 1, overflow: 'hidden' }}>
+              {/* Analyst list */}
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 12, overflowY: 'auto' }}>
+                {analysts.filter(a=>a.status==='ativo').map(a => (
+                  <div key={a.id} onClick={() => setSelectedAnalystTrilha(a)}
+                    style={{ padding: '9px 11px', borderRadius: 8, cursor: 'pointer', marginBottom: 5,
+                      border: `1px solid ${selectedAnalystTrilha?.id===a.id?'var(--auvo-border)':'var(--border)'}`,
+                      background: selectedAnalystTrilha?.id===a.id?'var(--auvo-dim)':'var(--surface2)' }}>
+                    <div style={{ fontSize: 12, fontWeight: 600 }}>{a.name}</div>
+                    <div style={{ fontSize: 10, color: 'var(--muted2)', marginTop: 2 }}>
+                      {trilhas.filter(t => {
+                        const items = t.video_trail_items || []
+                        return items.length > 0 && items.every(i => trilhaProgress.find(p=>p.analyst_id===a.id&&p.item_id===i.id&&p.watched))
+                      }).length}/{trilhas.length} trilhas concluídas
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {/* Progress per analyst */}
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, overflowY: 'auto' }}>
+                {selectedAnalystTrilha && (
+                  <>
+                    <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 16 }}>{selectedAnalystTrilha.name} — trilhas</div>
+                    {trilhas.map(t => {
+                      const items = t.video_trail_items || []
+                      const total = items.length
+                      const watched = items.filter(i => trilhaProgress.find(p=>p.analyst_id===selectedAnalystTrilha.id&&p.item_id===i.id&&p.watched)).length
+                      const pct = total ? Math.round(watched/total*100) : 0
+                      return (
+                        <div key={t.id} style={{ padding: '12px 14px', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 8, background: 'var(--surface2)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600 }}>{t.title}</div>
+                            <span style={{ fontSize: 11, color: pct===100?'var(--green)':'var(--auvo)', fontWeight: 600 }}>{pct===100?'✓ Concluída':`${watched}/${total} vídeos`}</span>
+                          </div>
+                          <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 4, height: 5, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', borderRadius: 4, background: pct===100?'var(--green)':'var(--auvo)', width: `${pct}%`, transition: 'width 0.5s ease' }} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'onboarding' && (
+      <>
       {/* Stats */}
       <div className="grid-4" style={{ marginBottom: 16 }}>
         {[
@@ -442,6 +605,9 @@ export default function Onboarding({ activeTeam }) {
           )}
         </div>
       </div>
+
+      </>
+      )}
 
       {/* ── MODAL: Add Analyst ── */}
       {showAdd && (
