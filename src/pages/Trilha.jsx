@@ -22,7 +22,14 @@ export default function Trilha() {
   const [exerciseForms, setExerciseForms] = useState([])
   const [exerciseResponses, setExerciseResponses] = useState([])
 
-  useEffect(() => { loadAll() }, [token])
+  // Rotas do enablement que não devem cair aqui
+  const ENABLEMENT_ROUTES = ['exercicios','onboarding','biblioteca','revisoes','avaliacoes','gamificacao','trilhas','rh','configuracoes']
+  const isEnablementRoute = ENABLEMENT_ROUTES.includes(token)
+
+  useEffect(() => {
+    if (!isEnablementRoute) loadAll()
+    else setLoading(false)
+  }, [token])
 
   async function loadAll(silent = false) {
     if (!silent) setLoading(true)
@@ -180,6 +187,11 @@ export default function Trilha() {
       <div className="spinner" />
     </div>
   )
+
+  if (isEnablementRoute) {
+    window.location.href = '/' + token
+    return null
+  }
 
   if (!analyst) return (
     <div className="loading-screen">
