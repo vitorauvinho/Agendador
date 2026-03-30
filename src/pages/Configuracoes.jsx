@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
 export default function Configuracoes({ activeTeam }) {
@@ -6,6 +6,9 @@ export default function Configuracoes({ activeTeam }) {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+  const fileInputRef = useRef()
 
   useEffect(() => { load() }, [activeTeam])
 
@@ -19,6 +22,30 @@ export default function Configuracoes({ activeTeam }) {
       company_name: data.company_name || 'Auvo',
     })
     setLoading(false)
+  }
+
+  async function handleLogoUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) { setUploadError('Somente imagens são permitidas.'); return }
+    if (file.size > 2 * 1024 * 1024) { setUploadError('Imagem deve ter menos de 2MB.'); return }
+
+    setUploading(true)
+    setUploadError('')
+
+    const ext = file.name.split('.').pop()
+    const fileName = `logo_${activeTeam}_${Date.now()}.${ext}`
+
+    const { error } = await supabase.storage.from('images').upload(fileName, file, { upsert: true })
+    if (error) { setUploadError('Erro ao fazer upload. Tente novamente.'); setUploading(false); return }
+
+    const { data: urlData } = supabase.storage.from('images').getPublicUrl(fileName)
+    setForm(f => ({ ...f, logo_url: urlData.publicUrl }))
+    setUploading(false)
+  }
+
+  async function removeLogo() {
+    setForm(f => ({ ...f, logo_url: '' }))
   }
 
   async function save() {
@@ -57,19 +84,54 @@ export default function Configuracoes({ activeTeam }) {
             </div>
 
             <div className="form-group">
-              <label>URL da logo</label>
-              <input value={form.logo_url} onChange={e => setForm(f => ({ ...f, logo_url: e.target.value }))}
-                placeholder="https://..." style={{ fontFamily: 'monospace', fontSize: 12 }} />
-              <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 5 }}>
-                💡 Hospede sua logo no Google Drive (compartilhar → link público) ou Imgur e cole a URL aqui.
-              </div>
+              <label>Logo da empresa</label>
+
+              {/* Upload area */}
+              {!form.logo_url ? (
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{ border: '2px dashed var(--border2)', borderRadius: 10, padding: '24px', textAlign: 'center', cursor: 'pointer', transition: 'all 0.15s', background: 'var(--surface2)' }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--auvo)'}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border2)'}
+                >
+                  {uploading ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                      <div className="spinner" />
+                      <div style={{ fontSize: 12, color: 'var(--muted2)' }}>Fazendo upload...</div>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 28, marginBottom: 8 }}>🖼️</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted2)', marginBottom: 4 }}>Clique para fazer upload</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>PNG, JPG ou SVG · máx. 2MB</div>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'var(--surface2)', borderRadius: 10, border: '1px solid var(--border)' }}>
+                  <img src={form.logo_url} alt="Logo" style={{ width: 48, height: 48, borderRadius: 10, objectFit: 'cover', flexShrink: 0 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--green)' }}>✓ Logo carregada</div>
+                    <div style={{ fontSize: 10, color: 'var(--muted2)', marginTop: 2 }}>Aparece na sidebar dos analistas</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button className="btn btn-sm" style={{ fontSize: 10 }} onClick={() => fileInputRef.current?.click()}>Trocar</button>
+                    <button className="btn btn-sm" style={{ fontSize: 10, color: 'var(--red)' }} onClick={removeLogo}>Remover</button>
+                  </div>
+                </div>
+              )}
+
+              <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleLogoUpload} />
+
+              {uploadError && (
+                <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 6 }}>⚠ {uploadError}</div>
+              )}
             </div>
 
             {/* Preview */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'var(--surface2)', borderRadius: 9, marginTop: 4 }}>
               {form.logo_url ? (
-                <img src={form.logo_url} alt="Logo" style={{ width: 36, height: 36, borderRadius: 9, objectFit: 'cover' }}
-                  onError={e => { e.target.style.display = 'none' }} />
+                <img src={form.logo_url} alt="Logo" style={{ width: 36, height: 36, borderRadius: 9, objectFit: 'cover' }} />
               ) : (
                 <div style={{ width: 36, height: 36, borderRadius: 9, background: 'var(--auvo)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 15 }}>
                   {(form.company_name || 'A').charAt(0)}
