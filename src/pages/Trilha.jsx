@@ -23,9 +23,7 @@ export default function Trilha() {
   useEffect(() => { loadAll() }, [token])
 
   async function loadAll(silent = false) {
-    // silent=true: não mostra loading spinner, não reseta scroll
     if (!silent) setLoading(true)
-
     const { data: a } = await supabase.from('analysts').select('*').eq('access_token', token).single()
     if (!a) { setLoading(false); return }
     setAnalyst(a)
@@ -44,61 +42,40 @@ export default function Trilha() {
     setLoading(false)
   }
 
-
   async function checkAndGrantBadges(analystId, updatedSessions, updatedGamif) {
     const currentBadges = updatedGamif?.badges || []
     const newBadges = [...currentBadges]
-
     const completedSessions = updatedSessions.filter(s => s.completed)
     const simulations = completedSessions.filter(s => s.type === 'simulacao')
     const videos = await supabase.from('video_submissions').select('id').eq('analyst_id', analystId)
     const csats = await supabase.from('session_ratings').select('id').eq('analyst_id', analystId)
     const videoCount = videos.data?.length || 0
     const csatCount = csats.data?.length || 0
-
-    // Helper
     const grant = (id) => { if (!newBadges.includes(id)) newBadges.push(id) }
 
-    // 🎯 Primeiro passo — primeira simulação
     if (simulations.length >= 1) grant('primeira_simulacao')
-
-    // ⚡ Semana 1 perfeita — dias 1 a 5 todos concluídos
-    const week1Done = updatedSessions.filter(s => s.day_number <= 5).every(s => s.completed)
-    if (week1Done && updatedSessions.filter(s => s.day_number <= 5).length > 0) grant('semana1_completa')
-
-    // 🔥 Chama acesa — streak 7 dias
+    const week1Sessions = updatedSessions.filter(s => s.day_number <= 5)
+    if (week1Sessions.length > 0 && week1Sessions.every(s => s.completed)) grant('semana1_completa')
     if ((updatedGamif?.streak_best || 0) >= 7) grant('streak_7')
-
-    // 💥 Imparável — streak 14 dias
     if ((updatedGamif?.streak_best || 0) >= 14) grant('streak_14')
-
-    // 🏅 PMOC Master — todos os módulos PMOC concluídos
     const pmocSessions = updatedSessions.filter(s => s.title?.toLowerCase().includes('pmoc'))
     if (pmocSessions.length > 0 && pmocSessions.every(s => s.completed)) grant('pmoc_master')
-
-    // 📹 Diretor — 5 vídeos enviados
     if (videoCount >= 5) grant('diretor')
-
-    // 💬 Voz ativa — 20 CSATs respondidos
     if (csatCount >= 20) grant('csat_top')
 
-    // 🚀 Velocista — semana 1 concluída em menos de 5 dias úteis
-    if (week1Done) {
-      const week1Sessions = updatedSessions.filter(s => s.day_number <= 5 && s.completed_at)
-      if (week1Sessions.length > 0) {
-        const lastW1 = new Date(Math.max(...week1Sessions.map(s => new Date(s.completed_at))))
+    if (week1Sessions.length > 0 && week1Sessions.every(s => s.completed)) {
+      const w1WithDate = week1Sessions.filter(s => s.completed_at)
+      if (w1WithDate.length > 0) {
+        const lastW1 = new Date(Math.max(...w1WithDate.map(s => new Date(s.completed_at))))
         const start = new Date(analyst.start_date + 'T12:00:00Z')
         const diffDays = Math.ceil((lastW1 - start) / (1000 * 60 * 60 * 24))
         if (diffDays <= 5) grant('velocista')
       }
     }
 
-    // 🏆 Onboarding completo — 100%
-    const allDone = updatedSessions.every(s => s.completed)
-    if (allDone && updatedSessions.length > 0) {
+    const allDone = updatedSessions.length > 0 && updatedSessions.every(s => s.completed)
+    if (allDone) {
       grant('onboarding_completo')
-
-      // 💜 Auvonauta — 100% + CSAT médio >= 3.5
       const ratings = await supabase.from('session_ratings').select('rating').eq('analyst_id', analystId)
       if (ratings.data?.length) {
         const avg = ratings.data.reduce((s, r) => s + r.rating, 0) / ratings.data.length
@@ -106,7 +83,6 @@ export default function Trilha() {
       }
     }
 
-    // Só atualiza se houver badges novos
     if (newBadges.length !== currentBadges.length) {
       await supabase.from('analyst_gamification').update({ badges: newBadges }).eq('analyst_id', analystId)
     }
@@ -115,16 +91,16 @@ export default function Trilha() {
   async function submitCsat(sessionId) {
     if (!csatScore) return
     setSubmitting(s => ({ ...s, [sessionId]: true }))
-    await supabase.from('session_ratings').upsert({ session_id: sessionId, analyst_id: analyst.id, rating: csatScore, comment: csatComment }, { onConflict: 'session_id,analyst_id' })
-
-    // XP
+    await supabase.from('session_ratings').upsert(
+      { session_id: sessionId, analyst_id: analyst.id, rating: csatScore, comment: csatComment },
+      { onConflict: 'session_id,analyst_id' }
+    )
     await supabase.from('xp_history').insert({ analyst_id: analyst.id, xp_gained: XP_VALUES.csat_respondido, reason: 'csat_respondido', session_id: sessionId })
     if (gamif) {
       const newXp = (gamif.xp_total || 0) + XP_VALUES.csat_respondido
       const lvl = getLevelInfo(newXp)
       await supabase.from('analyst_gamification').update({ xp_total: newXp, level: lvl.level, level_name: lvl.name }).eq('analyst_id', analyst.id)
     }
-
     setShowCsat(null); setCsatScore(0); setCsatComment('')
     setSubmitting(s => ({ ...s, [sessionId]: false }))
     loadAll(true)
@@ -134,47 +110,40 @@ export default function Trilha() {
     const url = videoLinks[sessionId]
     if (!url) return
     setSubmitting(s => ({ ...s, [`v_${sessionId}`]: true }))
-
     const platform = url.includes('youtube') || url.includes('youtu.be') ? 'youtube'
       : url.includes('drive.google') ? 'drive'
       : url.includes('loom') ? 'loom' : 'outro'
-
-    await supabase.from('video_submissions').upsert({ session_id: sessionId, analyst_id: analyst.id, video_url: url, platform, submitted_at: new Date().toISOString() }, { onConflict: 'session_id,analyst_id' })
+    await supabase.from('video_submissions').upsert(
+      { session_id: sessionId, analyst_id: analyst.id, video_url: url, platform, submitted_at: new Date().toISOString() },
+      { onConflict: 'session_id,analyst_id' }
+    )
     await supabase.from('sessions').update({ video_done: true }).eq('id', sessionId)
-
-    // XP + notificação
     await supabase.from('xp_history').insert({ analyst_id: analyst.id, xp_gained: XP_VALUES.video_enviado, reason: 'video_enviado', session_id: sessionId })
-    await supabase.from('notifications').insert({ team: analyst.team, type: 'video_submitted', analyst_id: analyst.id, session_id: sessionId, message: `${analyst.name} enviou um vídeo — ${sessions.find(s=>s.id===sessionId)?.title}` })
-
+    await supabase.from('notifications').insert({ team: analyst.team, type: 'video_submitted', analyst_id: analyst.id, session_id: sessionId, message: `${analyst.name} enviou um vídeo — ${sessions.find(s => s.id === sessionId)?.title}` })
     if (gamif) {
       const newXp = (gamif.xp_total || 0) + XP_VALUES.video_enviado
       const lvl = getLevelInfo(newXp)
       await supabase.from('analyst_gamification').update({ xp_total: newXp, level: lvl.level, level_name: lvl.name }).eq('analyst_id', analyst.id)
     }
-
     setSubmitting(s => ({ ...s, [`v_${sessionId}`]: false }))
     loadAll(true)
   }
 
   async function completeSession(session) {
     const hasEx = session.exercises?.length > 0
-    const hasVid = session.video_submissions?.length > 0
     const hasCsat = session.session_ratings?.length > 0
     if (hasEx && !session.exercise_done) return
-    if (hasVid && !session.video_done) return
     if (!hasCsat) { setShowCsat(session.id); return }
 
     await supabase.from('sessions').update({ completed: true, completed_at: new Date().toISOString() }).eq('id', session.id)
 
-    // XP
     const xpKey = session.type === 'simulacao' ? 'simulacao_concluida' : 'treinamento_concluido'
     await supabase.from('xp_history').insert({ analyst_id: analyst.id, xp_gained: XP_VALUES[xpKey], reason: xpKey, session_id: session.id })
+
     let updatedGamif = gamif
     if (gamif) {
       const newXp = (gamif.xp_total || 0) + XP_VALUES[xpKey]
       const lvl = getLevelInfo(newXp)
-
-      // Streak
       const today = new Date().toISOString().split('T')[0]
       const lastDate = gamif.streak_last_date
       let newStreak = gamif.streak_days || 0
@@ -183,24 +152,19 @@ export default function Trilha() {
         newStreak = lastDate === yesterday ? newStreak + 1 : 1
       }
       const newBest = Math.max(gamif.streak_best || 0, newStreak)
-
-      // Streak bonus XP
       let bonusXp = 0
       if (newStreak === 5)  bonusXp = XP_VALUES.streak_5_dias
       if (newStreak === 7)  bonusXp = XP_VALUES.streak_7_dias
       if (newStreak === 14) bonusXp = XP_VALUES.streak_14_dias
       if (bonusXp) await supabase.from('xp_history').insert({ analyst_id: analyst.id, xp_gained: bonusXp, reason: `streak_${newStreak}_dias` })
-
       const finalXp = newXp + bonusXp
       const finalLvl = getLevelInfo(finalXp)
       await supabase.from('analyst_gamification').update({ xp_total: finalXp, level: finalLvl.level, level_name: finalLvl.name, streak_days: newStreak, streak_best: newBest, streak_last_date: today }).eq('analyst_id', analyst.id)
       updatedGamif = { ...gamif, xp_total: finalXp, streak_days: newStreak, streak_best: newBest }
     }
 
-    // Check badges
     const { data: updatedSessions } = await supabase.from('sessions').select('*').eq('analyst_id', analyst.id)
     await checkAndGrantBadges(analyst.id, updatedSessions || [], updatedGamif)
-
     loadAll(true)
   }
 
@@ -223,232 +187,217 @@ export default function Trilha() {
   const pct = total ? Math.round((done / total) * 100) : 0
 
   return (
-    <AnalistaLayout analystName={analyst?.name}>
-    <div style={{ padding: '24px', maxWidth: 860, margin: '0 auto' }}>
+    <>
+      <AnalistaLayout analystName={analyst.name}>
+        <div style={{ padding: '24px', maxWidth: 860, margin: '0 auto' }}>
 
-      {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg, rgba(109,38,194,0.15), rgba(16,185,129,0.06))', border: '1px solid var(--auvo-border)', borderRadius: 16, padding: 20, marginBottom: 20 }}>
-        <div className="flex items-center gap-3" style={{ marginBottom: 14 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--auvo-dim)', border: '1px solid var(--auvo-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 700, color: 'var(--auvo)', flexShrink: 0 }}>
-            {analyst.name.charAt(0)}
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>Olá, {analyst.name.split(' ')[0]}! 👋</div>
-            <div style={{ fontSize: 11, color: 'var(--muted2)', marginTop: 2 }}>
-              {analyst.team === 'atendimento' ? '🎧 Atendimento' : '💼 Vendas'} · Início em {fmtDateLong(analyst.start_date)}
-            </div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 24, fontWeight: 700, color: pct === 100 ? 'var(--green)' : 'var(--auvo)' }}>{pct}%</div>
-            <div style={{ fontSize: 10, color: 'var(--muted2)' }}>{done} de {total} sessões</div>
-          </div>
-        </div>
-        <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 6, height: 8, overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${pct}%`, borderRadius: 6, background: pct === 100 ? 'var(--green)' : 'var(--auvo)', transition: 'width 0.7s ease' }} />
-        </div>
-        {gamif && (
-          <div style={{ display: 'flex', gap: 16, marginTop: 12, alignItems: 'center' }}>
-            <span style={{ fontSize: 11, color: 'var(--muted2)' }}>⭐ {gamif.xp_total || 0} XP · {gamif.level_name}</span>
-            {gamif.streak_days > 0 && <span style={{ fontSize: 11, color: 'var(--amber)' }}>🔥 {gamif.streak_days} dias seguidos</span>}
-            <a href={`/analista/${token}/estudar`} style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--auvo)', textDecoration: 'none', padding: '4px 10px', border: '1px solid var(--auvo-border)', borderRadius: 6, background: 'var(--auvo-dim)' }}>📚 Ver materiais</a>
-            <a href={`/analista/${token}/gamificacao`} style={{ fontSize: 11, color: 'var(--auvo)', textDecoration: 'none', padding: '4px 10px', border: '1px solid var(--auvo-border)', borderRadius: 6, background: 'var(--auvo-dim)' }}>🏆 Gamificação</a>
-          </div>
-        )}
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16 }}>
-
-        {/* Sessions */}
-        <div>
-          {WEEKS.map(week => {
-            const wkSessions = sessions.filter(s => week.days.includes(s.day_number))
-            if (!wkSessions.length) return null
-            return (
-              <div key={week.label} style={{ marginBottom: 24 }}>
-                <div className="flex items-center gap-2" style={{ marginBottom: 10 }}>
-                  <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--auvo)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{week.label}</span>
-                  <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-                  <span style={{ fontSize: 9, color: 'var(--muted)' }}>{wkSessions.filter(s=>s.completed).length}/{wkSessions.length}</span>
-                </div>
-
-                {week.days.map(day => {
-                  const daySessions = wkSessions.filter(s => s.day_number === day)
-                  if (!daySessions.length) return null
-                  const sessionDate = getSessionDate(analyst.start_date, day)
-                  return (
-                    <div key={day} style={{ marginBottom: 12 }}>
-                      <div style={{ display: 'inline-flex', gap: 6, padding: '2px 8px', background: 'var(--surface2)', borderRadius: 5, marginBottom: 6 }}>
-                        <span style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'monospace' }}>Dia {day}</span>
-                        <span style={{ color: 'var(--border)' }}>·</span>
-                        <span style={{ fontSize: 9, color: 'var(--muted)', textTransform: 'capitalize' }}>{fmtWeekday(sessionDate)}, {fmtDate(sessionDate)}</span>
-                      </div>
-
-                      {daySessions.map(session => {
-                        const hasEx = session.exercises?.length > 0
-                        const hasVid = !session.video_submissions?.length
-                        const exDone = session.exercise_done
-                        const vidDone = session.video_done
-                        const hasCsat = session.session_ratings?.length > 0
-                        const canComplete = (!hasEx || exDone) && (hasVid || vidDone) && hasCsat
-                        const isNext = !session.completed && sessions.filter(s => !s.completed)[0]?.id === session.id
-                        const sessionContents = contents.filter(c => c.session_keys?.includes(session.session_key))
-                        const isExpanded = expandedSession === session.id
-
-                        return (
-                          <div key={session.id} style={{ marginBottom: 6 }}>
-                            <div style={{
-                              padding: '10px 12px', borderRadius: 9, fontSize: 12,
-                              border: `1px solid ${session.completed ? 'rgba(16,185,129,0.2)' : isNext ? 'var(--auvo-border)' : 'var(--border)'}`,
-                              background: session.completed ? 'rgba(16,185,129,0.04)' : isNext ? 'var(--auvo-dim)' : 'var(--surface)',
-                              cursor: 'pointer',
-                            }}
-                              onClick={() => setExpandedSession(isExpanded ? null : session.id)}
-                            >
-                              <div className="flex items-center gap-2">
-                                <input type="checkbox" checked={session.completed} readOnly style={{ accentColor: 'var(--green)', flexShrink: 0 }} />
-                                <span style={{ flex: 1, textDecoration: session.completed ? 'line-through' : 'none', color: session.completed ? 'var(--muted)' : isNext ? 'var(--auvo)' : 'var(--text)', fontWeight: isNext ? 600 : 400 }}>
-                                  {session.title} {isNext && '← próxima'}
-                                </span>
-                                <span className={`tag tag-${session.type}`}>{session.type === 'treinamento' ? 'Treino' : 'Simulação'}</span>
-                                {hasCsat && <span style={{ fontSize: 14 }}>{EMOJIS[session.session_ratings[0].rating]}</span>}
-                                <span style={{ fontSize: 10, color: 'var(--muted)' }}>{isExpanded ? '▲' : '▼'}</span>
-                              </div>
-                            </div>
-
-                            {isExpanded && (
-                              <div style={{ padding: '10px 12px', background: 'var(--surface2)', borderRadius: '0 0 9px 9px', border: '1px solid var(--border)', borderTop: 'none' }}>
-
-                                {/* Materials */}
-                                {sessionContents.length > 0 && (
-                                  <div style={{ marginBottom: 10 }}>
-                                    <div style={{ fontSize: 9, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>📎 Materiais de preparação</div>
-                                    {sessionContents.map(c => (
-                                      <div key={c.id} className="flex items-center gap-8" style={{ padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
-                                        <span style={{ fontSize: 14 }}>{c.type === 'youtube' ? '▶️' : c.type === 'pdf' ? '📄' : c.type === 'notebooklm' ? '🤖' : c.type === 'playbook' ? '📘' : c.type === 'link_util' ? '🔗' : '📝'}</span>
-                                        <span style={{ flex: 1 }}>{c.title}</span>
-                                        {c.url && <a href={c.url} target="_blank" rel="noreferrer" style={{ fontSize: 10, color: 'var(--auvo)', textDecoration: 'none' }}>Abrir →</a>}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-
-                                {/* Exercise */}
-                                {hasEx && (
-                                  <div style={{ background: exDone ? 'var(--green-dim)' : 'var(--auvo-dim)', border: `1px solid ${exDone ? 'rgba(16,185,129,0.2)' : 'var(--auvo-border)'}`, borderRadius: 8, padding: '10px 12px', marginBottom: 8, fontSize: 11 }}>
-                                    <div className="flex items-center gap-2">
-                                      <span>{exDone ? '✅' : '📋'}</span>
-                                      <span style={{ flex: 1 }}>{exDone ? 'Exercício respondido!' : 'Exercício de fixação pendente'}</span>
-                                      {!exDone && session.exercises[0]?.form_url && (
-                                        <a href={session.exercises[0].form_url} target="_blank" rel="noreferrer" className="btn btn-primary btn-sm" style={{ fontSize: 9, textDecoration: 'none' }}>
-                                          Abrir formulário →
-                                        </a>
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Video submission */}
-                                {!session.video_submissions?.length && (
-                                  <div style={{ marginBottom: 8 }}>
-                                    <div style={{ fontSize: 10, color: 'var(--muted2)', marginBottom: 5 }}>🎥 Envie o link da sua gravação</div>
-                                    <div className="flex gap-2">
-                                      <input value={videoLinks[session.id] || ''} onChange={e => setVideoLinks(v => ({ ...v, [session.id]: e.target.value }))}
-                                        placeholder="Cole o link do vídeo (YouTube, Drive, Loom...)"
-                                        style={{ fontSize: 11 }} />
-                                      <button className="btn btn-primary btn-sm" style={{ fontSize: 10, whiteSpace: 'nowrap', flexShrink: 0 }}
-                                        disabled={!videoLinks[session.id] || submitting[`v_${session.id}`]}
-                                        onClick={() => submitVideo(session.id)}>
-                                        {submitting[`v_${session.id}`] ? '...' : 'Enviar'}
-                                      </button>
-                                    </div>
-                                  </div>
-                                )}
-                                {session.video_done && (
-                                  <div style={{ fontSize: 11, color: 'var(--green)', marginBottom: 8 }}>✅ Vídeo enviado!</div>
-                                )}
-
-                                {/* Complete button */}
-                                {!session.completed && (
-                                  <button className="btn btn-primary btn-sm" style={{ width: '100%', fontSize: 11, marginTop: 4, opacity: (!canComplete && !(hasEx && !exDone)) ? 0.5 : 1 }}
-                                    onClick={() => completeSession(session)}>
-                                    {hasCsat ? 'Marcar como concluída' : 'Concluir e avaliar sessão'}
-                                  </button>
-                                )}
-
-                                {/* Avaliar sessão já concluída sem CSAT */}
-                                {session.completed && !hasCsat && (
-                                  <button className="btn btn-sm" style={{ width: '100%', fontSize: 11, marginTop: 6, color: 'var(--auvo)', borderColor: 'var(--auvo-border)' }}
-                                    onClick={() => { setCsatScore(0); setCsatComment(''); setShowCsat(session.id) }}>
-                                    ✨ Avaliar esta sessão
-                                  </button>
-                                )}
-
-                                {/* CSAT já respondido */}
-                                {session.completed && hasCsat && (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, color: 'var(--muted2)' }}>
-                                    <span style={{ fontSize: 16 }}>{['','😞','😐','😊','🤩'][session.session_ratings[0].rating]}</span>
-                                    <span>Você avaliou esta sessão</span>
-                                    <button className="btn btn-sm" style={{ fontSize: 9, marginLeft: 'auto' }}
-                                      onClick={() => { setCsatScore(session.session_ratings[0].rating); setCsatComment(session.session_ratings[0].comment||''); setShowCsat(session.id) }}>
-                                      Editar
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )
-                })}
+          {/* Header */}
+          <div style={{ background: 'linear-gradient(135deg, rgba(109,38,194,0.15), rgba(16,185,129,0.06))', border: '1px solid var(--auvo-border)', borderRadius: 16, padding: 20, marginBottom: 20 }}>
+            <div className="flex items-center gap-3" style={{ marginBottom: 14 }}>
+              <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--auvo-dim)', border: '1px solid var(--auvo-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 700, color: 'var(--auvo)', flexShrink: 0 }}>
+                {analyst.name.charAt(0)}
               </div>
-            )
-          })}
-        </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 18, fontWeight: 700 }}>Olá, {analyst.name.split(' ')[0]}! 👋</div>
+                <div style={{ fontSize: 11, color: 'var(--muted2)', marginTop: 2 }}>
+                  {analyst.team === 'atendimento' ? '🎧 Atendimento' : '💼 Vendas'} · Início em {fmtDateLong(analyst.start_date)}
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 24, fontWeight: 700, color: pct === 100 ? 'var(--green)' : 'var(--auvo)' }}>{pct}%</div>
+                <div style={{ fontSize: 10, color: 'var(--muted2)' }}>{done} de {total} sessões</div>
+              </div>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 6, height: 8, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${pct}%`, borderRadius: 6, background: pct === 100 ? 'var(--green)' : 'var(--auvo)', transition: 'width 0.7s ease' }} />
+            </div>
+            {gamif && (
+              <div style={{ display: 'flex', gap: 16, marginTop: 12, alignItems: 'center' }}>
+                <span style={{ fontSize: 11, color: 'var(--muted2)' }}>⭐ {gamif.xp_total || 0} XP · {gamif.level_name}</span>
+                {gamif.streak_days > 0 && <span style={{ fontSize: 11, color: 'var(--amber)' }}>🔥 {gamif.streak_days} dias seguidos</span>}
+              </div>
+            )}
+          </div>
 
-        {/* Sidebar */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 16 }}>
 
-          {/* Enablement feedback */}
-          {enRatings.length > 0 && (
-            <div className="card">
-              <div className="card-title">Feedback do enablement</div>
-              {enRatings.slice(0, 3).map(r => (
-                <div key={r.id} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
-                  <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
-                    <span style={{ fontSize: 11, fontWeight: 600 }}>{r.sessions?.title}</span>
-                    <span style={{ color: 'var(--auvo)', fontSize: 12 }}>{'★'.repeat(r.score)}{'☆'.repeat(5 - r.score)}</span>
+            {/* Sessions */}
+            <div>
+              {WEEKS.map(week => {
+                const wkSessions = sessions.filter(s => week.days.includes(s.day_number))
+                if (!wkSessions.length) return null
+                return (
+                  <div key={week.label} style={{ marginBottom: 24 }}>
+                    <div className="flex items-center gap-2" style={{ marginBottom: 10 }}>
+                      <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--auvo)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{week.label}</span>
+                      <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                      <span style={{ fontSize: 9, color: 'var(--muted)' }}>{wkSessions.filter(s => s.completed).length}/{wkSessions.length}</span>
+                    </div>
+
+                    {week.days.map(day => {
+                      const daySessions = wkSessions.filter(s => s.day_number === day)
+                      if (!daySessions.length) return null
+                      const sessionDate = getSessionDate(analyst.start_date, day)
+                      return (
+                        <div key={day} style={{ marginBottom: 12 }}>
+                          <div style={{ display: 'inline-flex', gap: 6, padding: '2px 8px', background: 'var(--surface2)', borderRadius: 5, marginBottom: 6 }}>
+                            <span style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'monospace' }}>Dia {day}</span>
+                            <span style={{ color: 'var(--border)' }}>·</span>
+                            <span style={{ fontSize: 9, color: 'var(--muted)', textTransform: 'capitalize' }}>{fmtWeekday(sessionDate)}, {fmtDate(sessionDate)}</span>
+                          </div>
+
+                          {daySessions.map(session => {
+                            const hasEx = session.exercises?.length > 0
+                            const exDone = session.exercise_done
+                            const vidDone = session.video_done
+                            const hasCsat = session.session_ratings?.length > 0
+                            const isNext = !session.completed && sessions.filter(s => !s.completed)[0]?.id === session.id
+                            const sessionContents = contents.filter(c => c.session_keys?.includes(session.session_key))
+                            const isExpanded = expandedSession === session.id
+
+                            return (
+                              <div key={session.id} style={{ marginBottom: 6 }}>
+                                <div style={{
+                                  padding: '10px 12px', borderRadius: 9, fontSize: 12,
+                                  border: `1px solid ${session.completed ? 'rgba(16,185,129,0.2)' : isNext ? 'var(--auvo-border)' : 'var(--border)'}`,
+                                  background: session.completed ? 'rgba(16,185,129,0.04)' : isNext ? 'var(--auvo-dim)' : 'var(--surface)',
+                                  cursor: 'pointer',
+                                }}
+                                  onClick={() => setExpandedSession(isExpanded ? null : session.id)}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <input type="checkbox" checked={session.completed} readOnly style={{ accentColor: 'var(--green)', flexShrink: 0 }} />
+                                    <span style={{ flex: 1, textDecoration: session.completed ? 'line-through' : 'none', color: session.completed ? 'var(--muted)' : isNext ? 'var(--auvo)' : 'var(--text)', fontWeight: isNext ? 600 : 400 }}>
+                                      {session.title} {isNext && '← próxima'}
+                                    </span>
+                                    <span className={`tag tag-${session.type}`}>{session.type === 'treinamento' ? 'Treino' : 'Simulação'}</span>
+                                    {hasCsat && <span style={{ fontSize: 14 }}>{EMOJIS[session.session_ratings[0].rating]}</span>}
+                                    <span style={{ fontSize: 10, color: 'var(--muted)' }}>{isExpanded ? '▲' : '▼'}</span>
+                                  </div>
+                                </div>
+
+                                {isExpanded && (
+                                  <div style={{ padding: '10px 12px', background: 'var(--surface2)', borderRadius: '0 0 9px 9px', border: '1px solid var(--border)', borderTop: 'none' }}>
+
+                                    {/* Materials */}
+                                    {sessionContents.length > 0 && (
+                                      <div style={{ marginBottom: 10 }}>
+                                        <div style={{ fontSize: 9, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>📎 Materiais</div>
+                                        {sessionContents.map(c => (
+                                          <div key={c.id} className="flex items-center gap-2" style={{ padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
+                                            <span style={{ fontSize: 14 }}>{c.type === 'youtube' ? '▶️' : c.type === 'pdf' ? '📄' : c.type === 'notebooklm' ? '🤖' : c.type === 'playbook' ? '📘' : '🔗'}</span>
+                                            <span style={{ flex: 1 }}>{c.title}</span>
+                                            {c.url && <a href={c.url} target="_blank" rel="noreferrer" style={{ fontSize: 10, color: 'var(--auvo)', textDecoration: 'none' }}>Abrir →</a>}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+
+                                    {/* Exercise */}
+                                    {hasEx && (
+                                      <div style={{ background: exDone ? 'var(--green-dim)' : 'var(--auvo-dim)', border: `1px solid ${exDone ? 'rgba(16,185,129,0.2)' : 'var(--auvo-border)'}`, borderRadius: 8, padding: '10px 12px', marginBottom: 8, fontSize: 11 }}>
+                                        <div className="flex items-center gap-2">
+                                          <span>{exDone ? '✅' : '📋'}</span>
+                                          <span style={{ flex: 1 }}>{exDone ? 'Exercício respondido!' : 'Exercício de fixação pendente'}</span>
+                                          {!exDone && session.exercises[0]?.form_url && (
+                                            <a href={session.exercises[0].form_url} target="_blank" rel="noreferrer" className="btn btn-primary btn-sm" style={{ fontSize: 9, textDecoration: 'none' }}>
+                                              Abrir →
+                                            </a>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Video */}
+                                    {!session.video_submissions?.length && (
+                                      <div style={{ marginBottom: 8 }}>
+                                        <div style={{ fontSize: 10, color: 'var(--muted2)', marginBottom: 5 }}>🎥 Envie o link da sua gravação</div>
+                                        <div className="flex gap-2">
+                                          <input value={videoLinks[session.id] || ''} onChange={e => setVideoLinks(v => ({ ...v, [session.id]: e.target.value }))} placeholder="Cole o link do vídeo (YouTube, Drive, Loom...)" style={{ fontSize: 11 }} />
+                                          <button className="btn btn-primary btn-sm" style={{ fontSize: 10, whiteSpace: 'nowrap', flexShrink: 0 }} disabled={!videoLinks[session.id] || submitting[`v_${session.id}`]} onClick={() => submitVideo(session.id)}>
+                                            {submitting[`v_${session.id}`] ? '...' : 'Enviar'}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+                                    {vidDone && <div style={{ fontSize: 11, color: 'var(--green)', marginBottom: 8 }}>✅ Vídeo enviado!</div>}
+
+                                    {/* Complete button */}
+                                    {!session.completed && (
+                                      <button className="btn btn-primary btn-sm" style={{ width: '100%', fontSize: 11, marginTop: 4 }}
+                                        onClick={() => completeSession(session)}>
+                                        {hasCsat ? 'Marcar como concluída' : 'Concluir e avaliar sessão'}
+                                      </button>
+                                    )}
+
+                                    {/* Avaliar sessão concluída sem CSAT */}
+                                    {session.completed && !hasCsat && (
+                                      <button className="btn btn-sm" style={{ width: '100%', fontSize: 11, marginTop: 6, color: 'var(--auvo)', borderColor: 'var(--auvo-border)' }}
+                                        onClick={() => { setCsatScore(0); setCsatComment(''); setShowCsat(session.id) }}>
+                                        ✨ Avaliar esta sessão
+                                      </button>
+                                    )}
+
+                                    {/* CSAT respondido */}
+                                    {session.completed && hasCsat && (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, color: 'var(--muted2)' }}>
+                                        <span style={{ fontSize: 16 }}>{EMOJIS[session.session_ratings[0].rating]}</span>
+                                        <span>Você avaliou esta sessão</span>
+                                        <button className="btn btn-sm" style={{ fontSize: 9, marginLeft: 'auto' }}
+                                          onClick={() => { setCsatScore(session.session_ratings[0].rating); setCsatComment(session.session_ratings[0].comment || ''); setShowCsat(session.id) }}>
+                                          Editar
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    })}
                   </div>
-                  {r.comment && <div style={{ fontSize: 11, color: 'var(--muted2)', borderLeft: '2px solid var(--auvo)', paddingLeft: 8, lineHeight: 1.5 }}>{r.comment}</div>}
-                </div>
-              ))}
+                )
+              })}
             </div>
-          )}
 
-          {/* Gamification mini */}
-          {gamif && (
-            <div className="card">
-              <div className="card-title">Sua gamificação</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--auvo)', marginBottom: 2 }}>{gamif.xp_total || 0} XP</div>
-              <div style={{ fontSize: 11, color: 'var(--muted2)', marginBottom: 10 }}>Nível {gamif.level} — {gamif.level_name}</div>
-              {gamif.streak_days > 0 && (
-                <div style={{ fontSize: 12, color: 'var(--amber)', marginBottom: 10 }}>🔥 {gamif.streak_days} dias seguidos</div>
+            {/* Right sidebar */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {enRatings.length > 0 && (
+                <div className="card">
+                  <div className="card-title">Feedback do enablement</div>
+                  {enRatings.slice(0, 3).map(r => (
+                    <div key={r.id} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
+                      <div className="flex items-center justify-between" style={{ marginBottom: 5 }}>
+                        <span style={{ fontSize: 11, fontWeight: 600 }}>{r.sessions?.title}</span>
+                        <span style={{ color: 'var(--auvo)', fontSize: 12 }}>{'★'.repeat(r.score)}{'☆'.repeat(5 - r.score)}</span>
+                      </div>
+                      {r.comment && <div style={{ fontSize: 11, color: 'var(--muted2)', borderLeft: '2px solid var(--auvo)', paddingLeft: 8, lineHeight: 1.5 }}>{r.comment}</div>}
+                    </div>
+                  ))}
+                </div>
               )}
-              {gamif.badges?.length > 0 && (
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                  {gamif.badges.map((b, i) => <span key={i} title={b} style={{ fontSize: 20 }}>{b}</span>)}
+
+              {gamif && (
+                <div className="card">
+                  <div className="card-title">Sua gamificação</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--auvo)', marginBottom: 2 }}>{gamif.xp_total || 0} XP</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted2)', marginBottom: 10 }}>Nível {gamif.level} — {gamif.level_name}</div>
+                  {gamif.streak_days > 0 && <div style={{ fontSize: 12, color: 'var(--amber)', marginBottom: 10 }}>🔥 {gamif.streak_days} dias seguidos</div>}
+                  {gamif.badges?.length > 0 && (
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {gamif.badges.map((b, i) => <span key={i} style={{ fontSize: 20 }}>{b}</span>)}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      </AnalistaLayout>
 
-    </div>
-    </AnalistaLayout>
-
-      {/* CSAT Modal */}
+      {/* CSAT Modal — fora do layout para evitar overflow */}
       {showCsat && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowCsat(null)}>
           <div className="modal" style={{ width: 380 }}>
@@ -459,7 +408,7 @@ export default function Trilha() {
             <div className="modal-body">
               <div style={{ fontSize: 12, color: 'var(--muted2)', marginBottom: 16 }}>Sua avaliação ajuda o enablement a melhorar o onboarding.</div>
               <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginBottom: 18 }}>
-                {[1,2,3,4].map(score => (
+                {[1, 2, 3, 4].map(score => (
                   <button key={score} onClick={() => setCsatScore(score)}
                     style={{ width: 64, height: 64, borderRadius: 14, border: `2px solid ${csatScore === score ? 'var(--auvo)' : 'var(--border2)'}`, background: csatScore === score ? 'var(--auvo-dim)' : 'var(--surface2)', cursor: 'pointer', fontSize: 28, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, transform: csatScore === score ? 'scale(1.08)' : 'scale(1)', transition: 'all 0.15s' }}>
                     <span>{EMOJIS[score]}</span>
@@ -483,6 +432,6 @@ export default function Trilha() {
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }
