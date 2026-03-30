@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-const EMOJIS = ['', '😞', '😐', '😊', '🤩']
+const EMOJIS = ['😞', '😐', '😊', '😁', '🤩']
 const EMOJI_LABELS = ['', 'Ruim', 'Regular', 'Bom', 'Muito bom', 'Ótimo']
 
 export default function Avaliacoes({ activeTeam }) {
