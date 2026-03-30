@@ -76,7 +76,7 @@ export default function MinhasTrilhas() {
 
   return (
     <>
-      <AnalistaLayout analystName={analyst.name}>
+      <AnalistaLayout analystName={analyst.name} analystTeam={analyst.team}>
         <div style={{ padding: '24px', maxWidth: 860, margin: '0 auto' }}>
 
           <div style={{ marginBottom: 20 }}>
