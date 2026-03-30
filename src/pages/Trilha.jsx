@@ -296,16 +296,41 @@ export default function Trilha() {
 
                                     {/* Exercise */}
                                     {hasEx && (
-                                      <div style={{ background: exDone ? 'var(--green-dim)' : 'var(--auvo-dim)', border: `1px solid ${exDone ? 'rgba(16,185,129,0.2)' : 'var(--auvo-border)'}`, borderRadius: 8, padding: '10px 12px', marginBottom: 8, fontSize: 11 }}>
-                                        <div className="flex items-center gap-2">
-                                          <span>{exDone ? '✅' : '📋'}</span>
-                                          <span style={{ flex: 1 }}>{exDone ? 'Exercício respondido!' : 'Exercício de fixação pendente'}</span>
-                                          {!exDone && session.exercises[0]?.form_url && (
-                                            <a href={session.exercises[0].form_url} target="_blank" rel="noreferrer" className="btn btn-primary btn-sm" style={{ fontSize: 9, textDecoration: 'none' }}>
-                                              Abrir →
-                                            </a>
-                                          )}
-                                        </div>
+                                      <div style={{ background: exDone ? 'var(--green-dim)' : 'var(--amber-dim)', border: `1px solid ${exDone ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}`, borderRadius: 8, padding: '10px 12px', marginBottom: 8, fontSize: 11 }}>
+                                        {exDone ? (
+                                          <div className="flex items-center gap-2">
+                                            <span>✅</span>
+                                            <span style={{ flex: 1, color: 'var(--green)', fontWeight: 600 }}>Exercício respondido!</span>
+                                          </div>
+                                        ) : (
+                                          <>
+                                            <div className="flex items-center gap-2" style={{ marginBottom: 8 }}>
+                                              <span>📋</span>
+                                              <span style={{ flex: 1, fontWeight: 600, color: 'var(--amber)' }}>Exercício de fixação pendente</span>
+                                            </div>
+                                            <div style={{ fontSize: 10, color: 'var(--muted2)', marginBottom: 8 }}>
+                                              Responda o formulário abaixo e depois confirme aqui.
+                                            </div>
+                                            <div className="flex gap-2">
+                                              {session.exercises[0]?.form_url && (
+                                                <a href={session.exercises[0].form_url} target="_blank" rel="noreferrer"
+                                                  className="btn btn-primary btn-sm" style={{ fontSize: 10, textDecoration: 'none' }}>
+                                                  📝 Abrir formulário →
+                                                </a>
+                                              )}
+                                              <button className="btn btn-sm" style={{ fontSize: 10, color: 'var(--green)', borderColor: 'rgba(16,185,129,0.3)' }}
+                                                onClick={async () => {
+                                                  await supabase.from('sessions').update({ exercise_done: true }).eq('id', session.id)
+                                                  await supabase.from('exercises').upsert({ session_id: session.id, analyst_id: analyst.id, form_url: session.exercises[0]?.form_url || '', submitted_at: new Date().toISOString() }, { onConflict: 'session_id,analyst_id' })
+                                                  await supabase.from('xp_history').insert({ analyst_id: analyst.id, xp_gained: 15, reason: 'exercicio_enviado', session_id: session.id })
+                                                  await supabase.from('notifications').insert({ team: analyst.team, type: 'exercise_submitted', analyst_id: analyst.id, session_id: session.id, message: `${analyst.name} respondeu o exercício — ${session.title}` })
+                                                  loadAll(true)
+                                                }}>
+                                                ✓ Já respondi
+                                              </button>
+                                            </div>
+                                          </>
+                                        )}
                                       </div>
                                     )}
 
