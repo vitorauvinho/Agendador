@@ -14,7 +14,10 @@ export default function Onboarding({ activeTeam }) {
   const [exitForm, setExitForm] = useState({ reason: '', detail: '', date: '' })
   const [noteText, setNoteText] = useState('')
   const [saving, setSaving] = useState(false)
-  const [confirmUncheck, setConfirmUncheck] = useState(null) // session id to uncheck
+  const [confirmUncheck, setConfirmUncheck] = useState(null)
+  const [showExerciseForm, setShowExerciseForm] = useState(null) // session id
+  const [exerciseFormUrl, setExerciseFormUrl] = useState('')
+  const [savingExercise, setSavingExercise] = useState(false)
   const [settings, setSettings] = useState(null)
   const [webhookStatus, setWebhookStatus] = useState(null)
   const [activeTab, setActiveTab] = useState('onboarding') // 'onboarding' | 'trilhas'
@@ -148,6 +151,26 @@ export default function Onboarding({ activeTeam }) {
     setSaving(false)
     await loadAnalysts()
     setSelectedId(analyst.id)
+  }
+
+  async function saveExercise(sessionId) {
+    if (!exerciseFormUrl) return
+    setSavingExercise(true)
+    const { data: existing } = await supabase.from('exercises').select('id').eq('session_id', sessionId).single()
+    if (existing) {
+      await supabase.from('exercises').update({ form_url: exerciseFormUrl }).eq('id', existing.id)
+    } else {
+      await supabase.from('exercises').insert({ session_id: sessionId, analyst_id: selectedId, form_url: exerciseFormUrl })
+    }
+    setSavingExercise(false)
+    setShowExerciseForm(null)
+    setExerciseFormUrl('')
+    loadSessions(selectedId)
+  }
+
+  async function removeExercise(sessionId) {
+    await supabase.from('exercises').delete().eq('session_id', sessionId)
+    loadSessions(selectedId)
   }
 
   async function uncompleteSession(sessionId) {
