@@ -16,6 +16,28 @@ import Exercicios from './pages/Exercicios.jsx'
 import MinhasTrilhas from './pages/MinhasTrilhas.jsx'
 import { supabase } from './lib/supabase.js'
 
+function MainLayout({ activeTeam, onTeamChange, pendingCount }) {
+  return (
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+      <Sidebar activeTeam={activeTeam} onTeamChange={onTeamChange} pendingCount={pendingCount} />
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <Routes>
+          <Route index element={<Navigate to="/onboarding" replace />} />
+          <Route path="onboarding"    element={<Onboarding    activeTeam={activeTeam} />} />
+          <Route path="biblioteca"    element={<Biblioteca    activeTeam={activeTeam} />} />
+          <Route path="revisoes"      element={<Revisoes      activeTeam={activeTeam} />} />
+          <Route path="avaliacoes"    element={<Avaliacoes    activeTeam={activeTeam} />} />
+          <Route path="gamificacao"   element={<Gamificacao   activeTeam={activeTeam} />} />
+          <Route path="trilhas"       element={<Trilhas       activeTeam={activeTeam} />} />
+          <Route path="exercicios"    element={<Exercicios    activeTeam={activeTeam} />} />
+          <Route path="rh"            element={<PainelRH      activeTeam={activeTeam} />} />
+          <Route path="configuracoes" element={<Configuracoes activeTeam={activeTeam} />} />
+        </Routes>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const [activeTeam, setActiveTeam] = useState('atendimento')
   const [pendingCount, setPendingCount] = useState(0)
@@ -37,32 +59,20 @@ export default function App() {
 
   return (
     <Routes>
-      {/* Main platform — deve vir ANTES das rotas do analista */}
-      <Route path="/*" element={
-        <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-          <Sidebar activeTeam={activeTeam} onTeamChange={setActiveTeam} pendingCount={pendingCount} />
-          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            <Routes>
-              <Route path="/" element={<Navigate to="/onboarding" replace />} />
-              <Route path="/onboarding"     element={<Onboarding    activeTeam={activeTeam} />} />
-              <Route path="/biblioteca"     element={<Biblioteca    activeTeam={activeTeam} />} />
-              <Route path="/revisoes"       element={<Revisoes      activeTeam={activeTeam} />} />
-              <Route path="/avaliacoes"     element={<Avaliacoes    activeTeam={activeTeam} />} />
-              <Route path="/gamificacao"    element={<Gamificacao   activeTeam={activeTeam} />} />
-              <Route path="/trilhas"       element={<Trilhas       activeTeam={activeTeam} />} />
-              <Route path="/exercicios"    element={<Exercicios    activeTeam={activeTeam} />} />
-              <Route path="/rh"             element={<PainelRH      activeTeam={activeTeam} />} />
-              <Route path="/configuracoes"  element={<Configuracoes activeTeam={activeTeam} />} />
-            </Routes>
-          </div>
-        </div>
-      } />
+      {/* Rotas do analista — token específico */}
+      <Route path="/analista/:token"              element={<Trilha />} />
+      <Route path="/analista/:token/gamificacao"  element={<MinhaGamificacao />} />
+      <Route path="/analista/:token/estudar"      element={<Estudar />} />
+      <Route path="/analista/:token/trilhas"      element={<MinhasTrilhas />} />
 
-      {/* Analyst views via unique token — DEPOIS da rota principal */}
-      <Route path="/analista/:token" element={<Trilha />} />
-      <Route path="/analista/:token/gamificacao" element={<MinhaGamificacao />} />
-      <Route path="/analista/:token/estudar" element={<Estudar />} />
-      <Route path="/analista/:token/trilhas" element={<MinhasTrilhas />} />
+      {/* Plataforma principal — rotas relativas sem barra */}
+      <Route path="/*" element={
+        <MainLayout
+          activeTeam={activeTeam}
+          onTeamChange={setActiveTeam}
+          pendingCount={pendingCount}
+        />
+      } />
     </Routes>
   )
 }
