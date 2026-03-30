@@ -14,6 +14,7 @@ export default function Onboarding({ activeTeam }) {
   const [exitForm, setExitForm] = useState({ reason: '', detail: '', date: '' })
   const [noteText, setNoteText] = useState('')
   const [saving, setSaving] = useState(false)
+  const [confirmUncheck, setConfirmUncheck] = useState(null) // session id to uncheck
   const [settings, setSettings] = useState(null)
   const [webhookStatus, setWebhookStatus] = useState(null)
 
@@ -122,6 +123,13 @@ export default function Onboarding({ activeTeam }) {
     setSaving(false)
     await loadAnalysts()
     setSelectedId(analyst.id)
+  }
+
+  async function uncompleteSession(sessionId) {
+    await supabase.from('sessions').update({ completed: false, completed_at: null }).eq('id', sessionId)
+    setConfirmUncheck(null)
+    loadSessions(selectedId)
+    loadAnalysts()
   }
 
   async function toggleSession(session) {
@@ -366,6 +374,16 @@ export default function Onboarding({ activeTeam }) {
 
                               return (
                                 <div key={session.id} style={{ marginBottom: 4 }}>
+                                  {confirmUncheck === session.id && (
+                                    <div style={{ padding: '8px 10px', background: 'var(--red-dim)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, marginBottom: 4, fontSize: 11 }}>
+                                      <div style={{ color: 'var(--red)', fontWeight: 600, marginBottom: 6 }}>⚠ Desmarcar esta sessão?</div>
+                                      <div style={{ color: 'var(--muted2)', marginBottom: 8 }}>O XP do analista não será descontado automaticamente.</div>
+                                      <div className="flex gap-2">
+                                        <button className="btn btn-sm" style={{ fontSize: 10 }} onClick={() => setConfirmUncheck(null)}>Cancelar</button>
+                                        <button className="btn btn-danger btn-sm" style={{ fontSize: 10 }} onClick={() => uncompleteSession(session.id)}>Sim, desmarcar</button>
+                                      </div>
+                                    </div>
+                                  )}
                                   <div style={{
                                     display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
                                     border: `1px solid ${session.completed ? 'rgba(16,185,129,0.15)' : 'var(--border)'}`,
@@ -375,9 +393,14 @@ export default function Onboarding({ activeTeam }) {
                                   }}
                                     onClick={() => canComplete && !session.completed && toggleSession(session)}
                                   >
-                                    <input type="checkbox" checked={session.completed} readOnly
-                                      style={{ accentColor: 'var(--green)', flexShrink: 0 }}
-                                      onClick={e => { e.stopPropagation(); canComplete && !session.completed && toggleSession(session) }}
+                                    <input type="checkbox" checked={session.completed}
+                                      style={{ accentColor: 'var(--green)', flexShrink: 0, cursor: 'pointer' }}
+                                      onChange={e => {
+                                        e.stopPropagation()
+                                        if (session.completed) setConfirmUncheck(session.id)
+                                        else if (canComplete) toggleSession(session)
+                                      }}
+                                      onClick={e => e.stopPropagation()}
                                     />
                                     <span style={{ flex: 1, textDecoration: session.completed ? 'line-through' : 'none', color: session.completed ? 'var(--muted)' : 'var(--text)' }}>
                                       {session.title}
