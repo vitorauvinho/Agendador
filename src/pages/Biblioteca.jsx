@@ -3,7 +3,7 @@ import { supabase, TEAM_SESSIONS } from '../lib/supabase'
 
 const CONTENT_TYPES = [
   { key: 'youtube',    label: 'YouTube',    icon: '▶️', color: 'var(--red)' },
-  { key: 'pdf',        label: 'PDF',        icon: '📄', color: 'var(--blue)' },
+  { key: 'pdf',        label: 'Trein. Gravados', icon: '🎬', color: 'var(--blue)' },
   { key: 'notebooklm', label: 'NotebookLM', icon: '🤖', color: 'var(--auvo)' },
   { key: 'texto',      label: 'Texto',      icon: '📝', color: 'var(--green)' },
   { key: 'playbook',   label: 'Playbook',   icon: '📘', color: 'var(--amber)' },
@@ -125,7 +125,7 @@ export default function Biblioteca({ activeTeam }) {
           <div style={{ fontSize: 12 }}>Clique em "+ Novo conteúdo" para adicionar</div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 12, flex: 1, overflowY: 'auto' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 12, flex: 1, overflowY: 'auto', alignContent: 'start', alignItems: 'start' }}>
           {items.map(item => {
             const t = typeInfo(item.type)
             const tc = TYPE_COLORS[item.type] || TYPE_COLORS.youtube
