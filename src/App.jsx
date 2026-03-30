@@ -13,6 +13,7 @@ import MinhaGamificacao from './pages/MinhaGamificacao.jsx'
 import Estudar from './pages/Estudar.jsx'
 import Trilhas from './pages/Trilhas.jsx'
 import Exercicios from './pages/Exercicios.jsx'
+import Requalificacao from './pages/Requalificacao.jsx'
 import MinhasTrilhas from './pages/MinhasTrilhas.jsx'
 import { supabase } from './lib/supabase.js'
 
@@ -31,7 +32,8 @@ function MainLayout({ activeTeam, onTeamChange, pendingCount }) {
           <Route path="trilhas"       element={<Trilhas       activeTeam={activeTeam} />} />
           <Route path="exercicios"    element={<Exercicios    activeTeam={activeTeam} />} />
           <Route path="rh"            element={<PainelRH      activeTeam={activeTeam} />} />
-          <Route path="configuracoes" element={<Configuracoes activeTeam={activeTeam} />} />
+          <Route path="configuracoes"   element={<Configuracoes   activeTeam={activeTeam} />} />
+          <Route path="requalificacao"  element={<Requalificacao  activeTeam={activeTeam} />} />
         </Routes>
       </div>
     </div>
