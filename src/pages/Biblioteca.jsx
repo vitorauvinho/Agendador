@@ -2,12 +2,12 @@ import { useState, useEffect } from 'react'
 import { supabase, TEAM_SESSIONS } from '../lib/supabase'
 
 const CONTENT_TYPES = [
-  { key: 'youtube',    label: 'YouTube',    icon: '▶️', color: 'var(--red)' },
-  { key: 'pdf',        label: 'PDF',        icon: '📄', color: 'var(--blue)' },
-  { key: 'notebooklm', label: 'NotebookLM', icon: '🤖', color: 'var(--auvo)' },
-  { key: 'texto',      label: 'Texto',      icon: '📝', color: 'var(--green)' },
-  { key: 'playbook',   label: 'Playbook',   icon: '📘', color: 'var(--amber)' },
-  { key: 'link_util',  label: 'Link útil',  icon: '🔗', color: 'var(--teal)' },
+  { key: 'youtube',    label: 'YouTube',          icon: '▶️', color: 'var(--red)' },
+  { key: 'pdf',        label: 'Trein. Gravados',  icon: '🎬', color: 'var(--blue)' },
+  { key: 'notebooklm', label: 'NotebookLM',       icon: '🤖', color: 'var(--auvo)' },
+  { key: 'texto',      label: 'Texto',            icon: '📝', color: 'var(--green)' },
+  { key: 'playbook',   label: 'Playbook',         icon: '📘', color: 'var(--amber)' },
+  { key: 'link_util',  label: 'Link útil',        icon: '🔗', color: 'var(--teal)' },
 ]
 
 const TYPE_COLORS = {
@@ -157,8 +157,6 @@ export default function Biblioteca({ activeTeam }) {
                 <div style={{ padding: 12 }}>
                   <div style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.3, marginBottom: 4 }}>{item.title}</div>
                   {item.description && <div style={{ fontSize: 10, color: 'var(--muted2)', marginBottom: 8, lineHeight: 1.4 }}>{item.description}</div>}
-
-                  {/* Session chips */}
                   {item.session_keys?.length > 0 && (
                     <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', marginBottom: 8 }}>
                       {item.session_keys.slice(0, 4).map(k => (
@@ -167,8 +165,6 @@ export default function Biblioteca({ activeTeam }) {
                       {item.session_keys.length > 4 && <span style={{ fontSize: 8, color: 'var(--muted)' }}>+{item.session_keys.length - 4}</span>}
                     </div>
                   )}
-
-                  {/* Actions */}
                   <div className="flex gap-2">
                     {item.url && (
                       <a href={item.url} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ fontSize: 9, color: 'var(--auvo)', textDecoration: 'none' }}>
@@ -192,7 +188,7 @@ export default function Biblioteca({ activeTeam }) {
         </div>
       )}
 
-      {/* ── MODAL: Add/Edit Content ── */}
+      {/* MODAL: Add/Edit */}
       {showAdd && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowAdd(false)}>
           <div className="modal" style={{ width: 520 }}>
@@ -201,8 +197,6 @@ export default function Biblioteca({ activeTeam }) {
               <button className="modal-close" onClick={() => setShowAdd(false)}>✕</button>
             </div>
             <div className="modal-body">
-
-              {/* Type selector */}
               <div className="form-group">
                 <label>Tipo de conteúdo</label>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
@@ -218,32 +212,26 @@ export default function Biblioteca({ activeTeam }) {
                   ))}
                 </div>
               </div>
-
               <div className="form-group">
                 <label>Título</label>
                 <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Ex: Como realizar o Pré T1" />
               </div>
-
               <div className="form-group">
                 <label>Descrição (opcional)</label>
                 <input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Breve descrição do conteúdo" />
               </div>
-
               {form.type !== 'texto' && (
                 <div className="form-group">
-                  <label>{form.type === 'youtube' ? 'URL do YouTube' : form.type === 'pdf' ? 'URL do PDF' : form.type === 'notebooklm' ? 'URL do NotebookLM' : 'URL do link'}</label>
+                  <label>{form.type === 'youtube' ? 'URL do YouTube' : form.type === 'pdf' ? 'URL do vídeo gravado' : form.type === 'notebooklm' ? 'URL do NotebookLM' : 'URL do link'}</label>
                   <input value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} placeholder="https://..." />
                 </div>
               )}
-
               {form.type === 'texto' && (
                 <div className="form-group">
                   <label>Conteúdo</label>
                   <textarea value={form.body} onChange={e => setForm(f => ({ ...f, body: e.target.value }))} placeholder="Digite o conteúdo aqui..." style={{ minHeight: 100, resize: 'vertical' }} />
                 </div>
               )}
-
-              {/* Team selector */}
               <div className="form-group">
                 <label>Disponível para</label>
                 <div className="flex gap-2">
@@ -258,8 +246,6 @@ export default function Biblioteca({ activeTeam }) {
                   ))}
                 </div>
               </div>
-
-              {/* Session links */}
               <div className="form-group">
                 <label>Vincular a sessões (opcional)</label>
                 <div style={{ maxHeight: 150, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -282,7 +268,7 @@ export default function Biblioteca({ activeTeam }) {
         </div>
       )}
 
-      {/* ── MODAL: Preview YouTube ── */}
+      {/* MODAL: Preview YouTube */}
       {preview && preview.type === 'youtube' && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setPreview(null)}>
           <div className="modal" style={{ width: 700 }}>
@@ -295,14 +281,14 @@ export default function Biblioteca({ activeTeam }) {
                 <iframe width="100%" height="380" src={`https://www.youtube.com/embed/${getYoutubeId(preview.url)}`}
                   frameBorder="0" allowFullScreen style={{ borderRadius: 8 }} title={preview.title} />
               ) : (
-                <div style={{ textAlign: 'center', color: 'var(--muted)', padding: 40 }}>URL do YouTube inválida</div>
+                <div style={{ textAlign: 'center', color: 'var(--muted)', padding: 40 }}>URL inválida</div>
               )}
             </div>
           </div>
         </div>
       )}
 
-      {/* ── MODAL: Preview Texto ── */}
+      {/* MODAL: Preview Texto */}
       {preview && preview.type === 'texto' && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setPreview(null)}>
           <div className="modal" style={{ width: 600 }}>
