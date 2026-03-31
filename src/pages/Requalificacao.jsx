@@ -69,7 +69,8 @@ export default function Requalificacao({ activeTeam }) {
         email: `requalificacao_${Date.now()}@interno`,
         team: activeTeam,
         start_date: new Date().toISOString().split('T')[0],
-        status: 'ativo',
+        status: 'requalificacao',
+        access_token: null,
       }).select().single()
       analystId = newA?.id
     }
