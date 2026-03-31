@@ -15,6 +15,7 @@ export default function Onboarding({ activeTeam }) {
   const [noteText, setNoteText] = useState('')
   const [saving, setSaving] = useState(false)
   const [confirmUncheck, setConfirmUncheck] = useState(null)
+  const [confirmDeleteAnalyst, setConfirmDeleteAnalyst] = useState(null)
   const [showExerciseForm, setShowExerciseForm] = useState(null) // session id
   const [exerciseFormUrl, setExerciseFormUrl] = useState('')
   const [savingExercise, setSavingExercise] = useState(false)
@@ -220,6 +221,21 @@ export default function Onboarding({ activeTeam }) {
   async function removeExercise(sessionId) {
     await supabase.from('exercises').delete().eq('session_id', sessionId)
     loadSessions(selectedId)
+  }
+
+  async function deleteAnalyst(analystId) {
+    await supabase.from('sessions').delete().eq('analyst_id', analystId)
+    await supabase.from('analyst_gamification').delete().eq('analyst_id', analystId)
+    await supabase.from('xp_history').delete().eq('analyst_id', analystId)
+    await supabase.from('notifications').delete().eq('analyst_id', analystId)
+    await supabase.from('video_trail_progress').delete().eq('analyst_id', analystId)
+    await supabase.from('exercise_responses').delete().eq('analyst_id', analystId)
+    await supabase.from('session_ratings').delete().eq('analyst_id', analystId)
+    await supabase.from('enablement_ratings').delete().eq('analyst_id', analystId)
+    await supabase.from('analysts').delete().eq('id', analystId)
+    setConfirmDeleteAnalyst(null)
+    setSelectedId(null)
+    loadAnalysts()
   }
 
   async function uncompleteSession(sessionId) {
@@ -630,6 +646,12 @@ export default function Onboarding({ activeTeam }) {
                       <div style={{ fontSize: 10, color: 'var(--muted2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.email}</div>
                     </div>
                     <span className={`status-pill status-${a.status}`}>{a.status}</span>
+                    <button
+                      onClick={e => { e.stopPropagation(); setConfirmDeleteAnalyst(a.id) }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--muted)', padding: '2px 4px', borderRadius: 4, flexShrink: 0 }}
+                      title="Excluir analista">
+                      🗑️
+                    </button>
                   </div>
                   <div>
                     <div className="flex justify-between" style={{ marginBottom: 3 }}>
@@ -793,6 +815,32 @@ export default function Onboarding({ activeTeam }) {
       </div>
 
       </>
+      )}
+
+      {/* ── MODAL: Confirmar exclusão de analista ── */}
+      {confirmDeleteAnalyst && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setConfirmDeleteAnalyst(null)}>
+          <div className="modal" style={{ width: 400 }}>
+            <div className="modal-header">
+              <div className="modal-title" style={{ color: 'var(--red)' }}>⚠️ Excluir analista</div>
+              <button className="modal-close" onClick={() => setConfirmDeleteAnalyst(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--muted2)' }}>
+                Isso vai remover <strong style={{ color: 'var(--text)' }}>{analysts.find(a => a.id === confirmDeleteAnalyst)?.name}</strong> e todos os dados relacionados permanentemente.
+              </div>
+              <div style={{ marginTop: 14, padding: '10px 14px', background: 'var(--red-dim)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, fontSize: 12, color: 'var(--red)' }}>
+                ❌ Esta ação não pode ser desfeita. Sessões, progresso e histórico serão apagados.
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => setConfirmDeleteAnalyst(null)}>Cancelar</button>
+              <button className="btn btn-danger" onClick={() => deleteAnalyst(confirmDeleteAnalyst)}>
+                Sim, excluir permanentemente
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── MODAL: Add Analyst ── */}
