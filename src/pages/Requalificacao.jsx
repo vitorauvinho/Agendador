@@ -28,7 +28,6 @@ export default function Requalificacao({ activeTeam }) {
   const [editingItem, setEditingItem] = useState(null)
   const [planForm, setPlanForm] = useState({ analyst_id: '', analyst_name_free: '', title: 'Plano de Requalificação', reason: '' })
   const [analystMode, setAnalystMode] = useState('existing') // 'existing' | 'free'
-  const [showReasons, setShowReasons] = useState(false)
   const [itemForm, setItemForm] = useState({ title: '', type: 'treinamento', description: '', order_index: 0 })
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(null)
@@ -350,24 +349,14 @@ export default function Requalificacao({ activeTeam }) {
               </div>
               <div className="form-group">
                 <label>Motivo da requalificação</label>
-                <div style={{ position: 'relative' }}>
-                  <button onClick={() => setShowReasons(!showReasons)}
-                    style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${planForm.reason ? 'var(--auvo-border)' : 'var(--border2)'}`, background: planForm.reason ? 'var(--auvo-dim)' : 'var(--surface2)', color: planForm.reason ? 'var(--auvo)' : 'var(--muted)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', textAlign: 'left' }}>
-                    <span>{planForm.reason || 'Selecione o motivo...'}</span>
-                    <span style={{ fontSize: 10, transition: 'transform 0.2s', transform: showReasons ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
-                  </button>
-                  {showReasons && (
-                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: 'var(--surface)', border: '1px solid var(--border2)', borderRadius: 8, marginTop: 4, overflow: 'hidden', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
-                      {REASONS.map((r, i) => (
-                        <div key={r} onClick={() => { setPlanForm(f => ({ ...f, reason: r })); setShowReasons(false) }}
-                          style={{ padding: '10px 14px', fontSize: 12, cursor: 'pointer', color: planForm.reason===r ? 'var(--auvo)' : 'var(--text)', background: planForm.reason===r ? 'var(--auvo-dim)' : 'transparent', borderBottom: i < REASONS.length-1 ? '1px solid var(--border)' : 'none', transition: 'background 0.1s' }}
-                          onMouseEnter={e => { if (planForm.reason !== r) e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
-                          onMouseLeave={e => { if (planForm.reason !== r) e.currentTarget.style.background = 'transparent' }}>
-                          {planForm.reason===r && <span style={{ marginRight: 6 }}>✓</span>}{r}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {REASONS.map(r => (
+                    <label key={r} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 7, border: `1px solid ${planForm.reason===r?'var(--auvo-border)':'var(--border)'}`, background: planForm.reason===r?'var(--auvo-dim)':'transparent', cursor: 'pointer', marginBottom: 0 }}>
+                      <input type="radio" checked={planForm.reason===r} onChange={() => setPlanForm(f => ({ ...f, reason: r }))}
+                        style={{ width: 14, height: 14, flexShrink: 0, accentColor: 'var(--auvo)', cursor: 'pointer' }} />
+                      <span style={{ fontSize: 12, color: planForm.reason===r?'var(--auvo)':'var(--text)' }}>{r}</span>
+                    </label>
+                  ))}
                 </div>
               </div>
             </div>
