@@ -21,6 +21,7 @@ export default function Trilha() {
   const [expandedSession, setExpandedSession] = useState(null)
   const [exerciseForms, setExerciseForms] = useState([])
   const [exerciseResponses, setExerciseResponses] = useState([])
+  const [showingVideo, setShowingVideo] = useState(null)
 
   // Rotas do enablement que não devem cair aqui
   const ENABLEMENT_ROUTES = ['exercicios','onboarding','biblioteca','revisoes','avaliacoes','gamificacao','trilhas','rh','configuracoes']
@@ -30,6 +31,22 @@ export default function Trilha() {
     if (!isEnablementRoute) loadAll()
     else setLoading(false)
   }, [token])
+
+  async function handleComplete(session) {
+    const hasEx = exerciseForms.some(ef => ef.session_keys?.includes(session.title))
+    const exDone = hasEx ? exerciseResponses.some(r => exerciseForms.find(ef => ef.session_keys?.includes(session.title) && ef.id === r.exercise_id) && r.responded) : true
+    if (!exDone) return // não completa se tiver exercício pendente
+
+    await supabase.from('sessions').update({ completed: true, completed_at: new Date().toISOString() }).eq('id', session.id)
+    await supabase.from('xp_history').insert({ analyst_id: analyst.id, xp_gained: session.type === 'simulacao' ? 25 : 10, reason: session.type === 'simulacao' ? 'simulacao_concluida' : 'treinamento_concluido', session_id: session.id })
+    const { data: gam } = await supabase.from('analyst_gamification').select('xp_total').eq('analyst_id', analyst.id).single()
+    if (gam) {
+      const newXp = (gam.xp_total || 0) + (session.type === 'simulacao' ? 25 : 10)
+      const lvl = getLevelInfo(newXp)
+      await supabase.from('analyst_gamification').update({ xp_total: newXp, level: lvl.level, level_name: lvl.name }).eq('analyst_id', analyst.id)
+    }
+    loadAll(true)
+  }
 
   async function loadAll(silent = false) {
     if (!silent) setLoading(true)
@@ -284,7 +301,7 @@ export default function Trilha() {
                                   onClick={() => setExpandedSession(isExpanded ? null : session.id)}
                                 >
                                   <div className="flex items-center gap-2">
-                                    <input type="checkbox" checked={session.completed} readOnly
+                                    <input type="checkbox" checked={session.completed} onChange={() => !session.completed && handleComplete(session)}
                                       style={{ accentColor: 'var(--green)', flexShrink: 0, pointerEvents: 'none' }} />
                                     <span style={{ flex: 1, textDecoration: session.completed ? 'line-through' : 'none', color: session.completed ? 'var(--muted)' : isNext ? 'var(--auvo)' : 'var(--text)', fontWeight: isNext ? 600 : 400 }}>
                                       {session.title} {isNext && '← próxima'}
@@ -297,6 +314,27 @@ export default function Trilha() {
 
                                 {isExpanded && (
                                   <div style={{ padding: '10px 12px', background: 'var(--surface2)', borderRadius: '0 0 9px 9px', border: '1px solid var(--border)', borderTop: 'none' }}>
+
+                                    {/* YouTube inline player */}
+                                    {showingVideo && showingVideo.sessionId === session.id && (() => {
+                                      const url = showingVideo.url
+                                      const ytId = url?.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/)?.[1]
+                                      return ytId ? (
+                                        <div style={{ marginBottom: 10 }}>
+                                          <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
+                                            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--auvo)' }}>{showingVideo.title}</span>
+                                            <button onClick={() => setShowingVideo(null)} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 13 }}>✕</button>
+                                          </div>
+                                          <iframe width="100%" height="200" src={`https://www.youtube.com/embed/${ytId}?autoplay=1`}
+                                            frameBorder="0" allowFullScreen allow="autoplay" style={{ borderRadius: 8 }} title={showingVideo.title} />
+                                        </div>
+                                      ) : (
+                                        <div style={{ marginBottom: 10, padding: '10px', background: 'var(--surface2)', borderRadius: 8, textAlign: 'center' }}>
+                                          <a href={url} target="_blank" rel="noreferrer" className="btn btn-primary btn-sm" style={{ textDecoration: 'none', fontSize: 11 }}>Abrir vídeo →</a>
+                                          <button onClick={() => setShowingVideo(null)} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 11, marginLeft: 8 }}>✕ Fechar</button>
+                                        </div>
+                                      )
+                                    })()}
 
                                     {/* Materials */}
                                     {sessionContents.length > 0 && (
