@@ -139,22 +139,26 @@ export default function Biblioteca({ activeTeam }) {
         </div>
       </div>
 
-      {/* Search + session filter */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 12px' }}>
-          <span style={{ fontSize: 14, color: 'var(--muted)', flexShrink: 0 }}>🔍</span>
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar por título ou descrição..."
-            style={{ background: 'none', border: 'none', color: 'var(--text)', fontFamily: 'inherit', fontSize: 12, outline: 'none', width: '100%', padding: 0 }} />
-          {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 14, padding: 0 }}>✕</button>}
-        </div>
+      {/* Search */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 14px', marginBottom: 8 }}>
+        <span style={{ fontSize: 16, color: 'var(--muted)', flexShrink: 0 }}>🔍</span>
+        <input value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Buscar conteúdo por nome ou descrição..."
+          style={{ background: 'none', border: 'none', color: 'var(--text)', fontFamily: 'inherit', fontSize: 13, outline: 'none', width: '100%', padding: 0 }} />
+        {search && (
+          <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 16, padding: 0, lineHeight: 1 }}>✕</button>
+        )}
+      </div>
+
+      {/* Session filter */}
+      <div style={{ marginBottom: 14 }}>
         <select value={sessionFilter} onChange={e => setSessionFilter(e.target.value)}
-          style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 12px', color: 'var(--text)', fontFamily: 'inherit', fontSize: 12, cursor: 'pointer', minWidth: 160 }}>
-          <option value="todos">Todas as sessões</option>
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 14px', color: 'var(--text)', fontFamily: 'inherit', fontSize: 12, cursor: 'pointer', width: '100%' }}>
+          <option value="todos">📅 Todas as sessões</option>
           {uniqueDays.map(day => (
             <option key={day} value={day}>Dia {day}</option>
           ))}
-          <option value="[]">Sem sessão vinculada</option>
+          <option value="[]">— Sem sessão vinculada</option>
         </select>
       </div>
 
