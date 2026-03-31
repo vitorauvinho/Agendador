@@ -33,6 +33,7 @@ export default function Biblioteca({ activeTeam }) {
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [preview, setPreview] = useState(null)
+  const [showFilters, setShowFilters] = useState(false)
 
   const allSessions = TEAM_SESSIONS[activeTeam]
   const uniqueDays = [...new Set(allSessions.map(s => s.day))].sort((a,b) => a-b)
@@ -124,43 +125,118 @@ export default function Biblioteca({ activeTeam }) {
         </button>
       </div>
 
-      {/* Filters bar */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-        {/* Type filter */}
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          <button className={`pill ${typeFilter==='todos'?'active':''}`} onClick={() => setTypeFilter('todos')}>
-            Todos ({items.length})
-          </button>
-          {CONTENT_TYPES.filter(t => typeCounts[t.key] > 0).map(t => (
-            <button key={t.key} className={`pill ${typeFilter===t.key?'active':''}`} onClick={() => setTypeFilter(t.key)}>
-              {t.icon} {t.label} ({typeCounts[t.key]})
-            </button>
-          ))}
+      {/* Search + Filter button */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 14px' }}>
+          <span style={{ fontSize: 15, color: 'var(--muted)', flexShrink: 0 }}>🔍</span>
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar por nome ou descrição..."
+            style={{ background: 'none', border: 'none', color: 'var(--text)', fontFamily: 'inherit', fontSize: 13, outline: 'none', width: '100%', padding: 0 }} />
+          {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 15, padding: 0, lineHeight: 1 }}>✕</button>}
         </div>
+        <button onClick={() => setShowFilters(true)}
+          style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 16px', borderRadius: 8, border: `1px solid ${(typeFilter!=='todos'||sessionFilter!=='todos') ? 'var(--auvo)' : 'var(--border)'}`, background: (typeFilter!=='todos'||sessionFilter!=='todos') ? 'var(--auvo)' : 'var(--surface)', color: (typeFilter!=='todos'||sessionFilter!=='todos') ? '#fff' : 'var(--muted2)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 500, flexShrink: 0, transition: 'all 0.15s' }}>
+          <span>⚙️</span>
+          Filtros
+          {(typeFilter!=='todos'||sessionFilter!=='todos') && (
+            <span style={{ background: 'rgba(255,255,255,0.3)', borderRadius: 8, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>
+              {[typeFilter!=='todos',sessionFilter!=='todos'].filter(Boolean).length}
+            </span>
+          )}
+        </button>
       </div>
 
-      {/* Search */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 14px', marginBottom: 8 }}>
-        <span style={{ fontSize: 16, color: 'var(--muted)', flexShrink: 0 }}>🔍</span>
-        <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Buscar conteúdo por nome ou descrição..."
-          style={{ background: 'none', border: 'none', color: 'var(--text)', fontFamily: 'inherit', fontSize: 13, outline: 'none', width: '100%', padding: 0 }} />
-        {search && (
-          <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 16, padding: 0, lineHeight: 1 }}>✕</button>
-        )}
-      </div>
+      {/* Active filter chips */}
+      {(typeFilter!=='todos'||sessionFilter!=='todos') && (
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 10, color: 'var(--muted)' }}>Filtros ativos:</span>
+          {typeFilter!=='todos' && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, padding: '3px 8px', borderRadius: 6, background: 'var(--auvo-dim)', color: 'var(--auvo)', border: '1px solid var(--auvo-border)' }}>
+              {CONTENT_TYPES.find(t=>t.key===typeFilter)?.icon} {CONTENT_TYPES.find(t=>t.key===typeFilter)?.label}
+              <button onClick={() => setTypeFilter('todos')} style={{ background: 'none', border: 'none', color: 'var(--auvo)', cursor: 'pointer', fontSize: 12, padding: 0, lineHeight: 1, marginLeft: 2 }}>✕</button>
+            </span>
+          )}
+          {sessionFilter!=='todos' && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, padding: '3px 8px', borderRadius: 6, background: 'var(--auvo-dim)', color: 'var(--auvo)', border: '1px solid var(--auvo-border)' }}>
+              📅 Dia {sessionFilter}
+              <button onClick={() => setSessionFilter('todos')} style={{ background: 'none', border: 'none', color: 'var(--auvo)', cursor: 'pointer', fontSize: 12, padding: 0, lineHeight: 1, marginLeft: 2 }}>✕</button>
+            </span>
+          )}
+          <button onClick={() => { setTypeFilter('todos'); setSessionFilter('todos') }} style={{ fontSize: 10, color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+            Limpar tudo
+          </button>
+        </div>
+      )}
 
-      {/* Session filter */}
-      <div style={{ marginBottom: 14 }}>
-        <select value={sessionFilter} onChange={e => setSessionFilter(e.target.value)}
-          style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 14px', color: 'var(--text)', fontFamily: 'inherit', fontSize: 12, cursor: 'pointer', width: '100%' }}>
-          <option value="todos">📅 Todas as sessões</option>
-          {uniqueDays.map(day => (
-            <option key={day} value={day}>Dia {day}</option>
-          ))}
-          <option value="[]">— Sem sessão vinculada</option>
-        </select>
-      </div>
+      {/* Filter panel overlay */}
+      {showFilters && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 150 }} onClick={() => setShowFilters(false)}>
+          <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 320, background: 'var(--surface)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', boxShadow: '-8px 0 32px rgba(0,0,0,0.4)' }}
+            onClick={e => e.stopPropagation()}>
+
+            {/* Panel header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid var(--border)', background: 'var(--auvo)', color: '#fff' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16 }}>⚙️</span>
+                <span style={{ fontSize: 14, fontWeight: 700 }}>Filtros</span>
+              </div>
+              <button onClick={() => setShowFilters(false)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 18, padding: 0 }}>✕</button>
+            </div>
+
+            {/* Panel body */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
+
+              {/* Tipo */}
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--auvo)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>Tipo de conteúdo</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 7, border: `1px solid ${typeFilter==='todos'?'var(--auvo-border)':'var(--border)'}`, background: typeFilter==='todos'?'var(--auvo-dim)':'transparent', cursor: 'pointer' }}>
+                    <input type="radio" checked={typeFilter==='todos'} onChange={() => setTypeFilter('todos')} style={{ accentColor: 'var(--auvo)', width: 14, height: 14 }} />
+                    <span style={{ fontSize: 12, color: typeFilter==='todos'?'var(--auvo)':'var(--text)' }}>Todos ({items.length})</span>
+                  </label>
+                  {CONTENT_TYPES.filter(t => typeCounts[t.key] > 0).map(t => (
+                    <label key={t.key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 7, border: `1px solid ${typeFilter===t.key?'var(--auvo-border)':'var(--border)'}`, background: typeFilter===t.key?'var(--auvo-dim)':'transparent', cursor: 'pointer' }}>
+                      <input type="radio" checked={typeFilter===t.key} onChange={() => setTypeFilter(t.key)} style={{ accentColor: 'var(--auvo)', width: 14, height: 14 }} />
+                      <span style={{ fontSize: 14, flexShrink: 0 }}>{t.icon}</span>
+                      <span style={{ fontSize: 12, flex: 1, color: typeFilter===t.key?'var(--auvo)':'var(--text)' }}>{t.label}</span>
+                      <span style={{ fontSize: 10, color: 'var(--muted)', background: 'var(--surface2)', padding: '1px 6px', borderRadius: 4 }}>{typeCounts[t.key]}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sessão */}
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--auvo)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>Sessão vinculada</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 7, border: `1px solid ${sessionFilter==='todos'?'var(--auvo-border)':'var(--border)'}`, background: sessionFilter==='todos'?'var(--auvo-dim)':'transparent', cursor: 'pointer' }}>
+                    <input type="radio" checked={sessionFilter==='todos'} onChange={() => setSessionFilter('todos')} style={{ accentColor: 'var(--auvo)', width: 14, height: 14 }} />
+                    <span style={{ fontSize: 12, color: sessionFilter==='todos'?'var(--auvo)':'var(--text)' }}>Todas as sessões</span>
+                  </label>
+                  {uniqueDays.map(day => (
+                    <label key={day} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 7, border: `1px solid ${sessionFilter==day||sessionFilter==String(day)?'var(--auvo-border)':'var(--border)'}`, background: sessionFilter==day||sessionFilter==String(day)?'var(--auvo-dim)':'transparent', cursor: 'pointer' }}>
+                      <input type="radio" checked={sessionFilter==day||sessionFilter==String(day)} onChange={() => setSessionFilter(day)} style={{ accentColor: 'var(--auvo)', width: 14, height: 14 }} />
+                      <span style={{ fontSize: 12, color: sessionFilter==day||sessionFilter==String(day)?'var(--auvo)':'var(--text)' }}>Dia {day}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Panel footer */}
+            <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
+              <button onClick={() => { setTypeFilter('todos'); setSessionFilter('todos') }}
+                style={{ flex: 1, padding: '9px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted2)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12 }}>
+                Limpar filtros
+              </button>
+              <button onClick={() => setShowFilters(false)}
+                style={{ flex: 1, padding: '9px', borderRadius: 8, border: 'none', background: 'var(--auvo)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600 }}>
+                Aplicar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Content list */}
       {loading ? (
