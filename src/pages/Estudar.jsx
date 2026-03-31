@@ -27,6 +27,7 @@ export default function Estudar() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('todos')
+  const [search, setSearch] = useState('')
   const [preview, setPreview] = useState(null)
 
   useEffect(() => { loadAll() }, [token])
@@ -49,7 +50,11 @@ export default function Estudar() {
   }
 
   const typeInfo = (type) => CONTENT_TYPES.find(t => t.key === type) || CONTENT_TYPES[0]
-  const filtered = filter === 'todos' ? items : items.filter(i => i.type === filter)
+  const filtered = items.filter(i => {
+    const matchType = filter === 'todos' || i.type === filter
+    const matchSearch = !search || i.title?.toLowerCase().includes(search.toLowerCase()) || i.description?.toLowerCase().includes(search.toLowerCase())
+    return matchType && matchSearch
+  })
 
   if (loading) return (
     <div className="loading-screen">
@@ -79,7 +84,7 @@ export default function Estudar() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap', flexShrink: 0 }}>
             <button className={`pill ${filter === 'todos' ? 'active' : ''}`} onClick={() => setFilter('todos')}>Todos ({items.length})</button>
             {CONTENT_TYPES.filter(t => items.some(i => i.type === t.key)).map(t => (
               <button key={t.key} className={`pill ${filter === t.key ? 'active' : ''}`} onClick={() => setFilter(t.key)}>
@@ -88,10 +93,29 @@ export default function Estudar() {
             ))}
           </div>
 
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', marginBottom: 16 }}>
+            <span style={{ fontSize: 14, color: 'var(--muted)', flexShrink: 0 }}>&#128269;</span>
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar por titulo ou descricao..."
+              style={{ background: 'none', border: 'none', color: 'var(--text)', fontFamily: 'inherit', fontSize: 12, outline: 'none', width: '100%', padding: 0 }} />
+            {search && (
+              <button onClick={() => setSearch('')}
+                style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 14, padding: 0, flexShrink: 0 }}>X</button>
+            )}
+          </div>
+
           {filtered.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--muted)' }}>
-              <div style={{ fontSize: 36, marginBottom: 12 }}>📚</div>
-              <div style={{ fontSize: 14, color: 'var(--muted2)' }}>Nenhum conteúdo disponível ainda</div>
+              <div style={{ fontSize: 36, marginBottom: 12 }}>📭</div>
+              <div style={{ fontSize: 14, color: 'var(--muted2)' }}>
+                {search || filter !== 'todos' ? 'Nenhum resultado encontrado' : 'Nenhum conteúdo disponível ainda'}
+              </div>
+              {(search || filter !== 'todos') && (
+                <button className="btn btn-sm" style={{ marginTop: 10, fontSize: 11 }}
+                  onClick={() => { setSearch(''); setFilter('todos') }}>
+                  Limpar filtros
+                </button>
+              )}
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
