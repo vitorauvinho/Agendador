@@ -313,7 +313,7 @@ export default function Requalificacao({ activeTeam }) {
       {/* Modal: Novo plano */}
       {showPlanForm && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowPlanForm(false)}>
-          <div className="modal" style={{ width: 440 }}>
+          <div className="modal" style={{ width: 520 }}>
             <div className="modal-header">
               <div className="modal-title">Novo plano de requalificação</div>
               <button className="modal-close" onClick={() => setShowPlanForm(false)}>✕</button>
@@ -351,9 +351,10 @@ export default function Requalificacao({ activeTeam }) {
                 <label>Motivo da requalificação</label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {REASONS.map(r => (
-                    <label key={r} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 7, border: `1px solid ${planForm.reason===r?'var(--auvo-border)':'var(--border)'}`, background: planForm.reason===r?'var(--auvo-dim)':'transparent', cursor: 'pointer', marginBottom: 0, fontSize: 12 }}>
-                      <input type="radio" checked={planForm.reason===r} onChange={() => setPlanForm(f => ({ ...f, reason: r }))} style={{ flexShrink: 0, accentColor: 'var(--auvo)' }} />
-                      <span>{r}</span>
+                    <label key={r} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 7, border: `1px solid ${planForm.reason===r?'var(--auvo-border)':'var(--border)'}`, background: planForm.reason===r?'var(--auvo-dim)':'transparent', cursor: 'pointer', marginBottom: 0 }}>
+                      <input type="radio" checked={planForm.reason===r} onChange={() => setPlanForm(f => ({ ...f, reason: r }))}
+                        style={{ width: 14, height: 14, flexShrink: 0, accentColor: 'var(--auvo)', cursor: 'pointer' }} />
+                      <span style={{ fontSize: 12, color: planForm.reason===r?'var(--auvo)':'var(--text)' }}>{r}</span>
                     </label>
                   ))}
                 </div>
