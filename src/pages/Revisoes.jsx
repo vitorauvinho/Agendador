@@ -147,15 +147,13 @@ export default function Revisoes({ activeTeam }) {
                   </div>
                 )}
 
-                {item.kind !== 'exit' && (
-                  {!showReviewed && (
-                    <button className="btn btn-primary btn-sm" style={{ fontSize: 10 }} onClick={() => markReviewed(item)}>
-                      ✓ Marcar como revisado
-                    </button>
-                  )}
-                  {showReviewed && (
-                    <span style={{ fontSize: 10, color: 'var(--green)', fontWeight: 600 }}>✓ Revisado em {item.reviewed_at ? new Date(item.reviewed_at).toLocaleDateString('pt-BR') : '—'}</span>
-                  )}
+                {item.kind !== 'exit' && !showReviewed && (
+                  <button className="btn btn-primary btn-sm" style={{ fontSize: 10 }} onClick={() => markReviewed(item)}>
+                    ✓ Marcar como revisado
+                  </button>
+                )}
+                {item.kind !== 'exit' && showReviewed && (
+                  <span style={{ fontSize: 10, color: 'var(--green)', fontWeight: 600 }}>✓ Revisado em {item.reviewed_at ? new Date(item.reviewed_at).toLocaleDateString('pt-BR') : '—'}</span>
                 )}
                 {item.kind === 'exit' && (
                   <button className="btn btn-sm" style={{ fontSize: 10 }} onClick={() => markReviewed(item)}>
