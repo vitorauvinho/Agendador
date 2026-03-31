@@ -5,8 +5,9 @@ export default function Revisoes({ activeTeam }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('todos')
+  const [showReviewed, setShowReviewed] = useState(false)
 
-  useEffect(() => { loadReviews() }, [activeTeam, filter])
+  useEffect(() => { loadReviews() }, [activeTeam, filter, showReviewed])
 
   async function loadReviews() {
     setLoading(true)
@@ -17,12 +18,13 @@ export default function Revisoes({ activeTeam }) {
     const analystIds = (teamAnalysts || []).map(a => a.id)
 
     // Exercícios respondidos pelos analistas do time (via exercise_responses)
-    const { data: exercises } = analystIds.length ? await supabase
+    let exQuery = supabase
       .from('exercise_responses')
       .select('*, exercise_forms(title, form_url), analysts(name, team)')
       .eq('responded', true)
-      .eq('reviewed', false)
-      .in('analyst_id', analystIds) : { data: [] }
+    if (!showReviewed) exQuery = exQuery.eq('reviewed', false)
+    if (analystIds.length) exQuery = exQuery.in('analyst_id', analystIds)
+    const { data: exercises } = analystIds.length ? await exQuery : { data: [] }
 
     // Vídeos pendentes
     const { data: videos } = analystIds.length ? await supabase
@@ -146,9 +148,14 @@ export default function Revisoes({ activeTeam }) {
                 )}
 
                 {item.kind !== 'exit' && (
-                  <button className="btn btn-primary btn-sm" style={{ fontSize: 10 }} onClick={() => markReviewed(item)}>
-                    ✓ Marcar como revisado
-                  </button>
+                  {!showReviewed && (
+                    <button className="btn btn-primary btn-sm" style={{ fontSize: 10 }} onClick={() => markReviewed(item)}>
+                      ✓ Marcar como revisado
+                    </button>
+                  )}
+                  {showReviewed && (
+                    <span style={{ fontSize: 10, color: 'var(--green)', fontWeight: 600 }}>✓ Revisado em {item.reviewed_at ? new Date(item.reviewed_at).toLocaleDateString('pt-BR') : '—'}</span>
+                  )}
                 )}
                 {item.kind === 'exit' && (
                   <button className="btn btn-sm" style={{ fontSize: 10 }} onClick={() => markReviewed(item)}>
