@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase, TEAM_SESSIONS } from '../lib/supabase'
 
 const CONTENT_TYPES = [
-  { key: 'youtube',    label: 'YouTube',          icon: '▶️', color: 'var(--red)' },
+  { key: 'youtube',    label: 'YouTube',         icon: '▶️', color: 'var(--red)' },
   { key: 'pdf',        label: 'Trein. Gravados',  icon: '🎬', color: 'var(--blue)' },
   { key: 'notebooklm', label: 'NotebookLM',       icon: '🤖', color: 'var(--auvo)' },
   { key: 'texto',      label: 'Texto',            icon: '📝', color: 'var(--green)' },
@@ -24,7 +24,9 @@ const EMPTY_FORM = { title: '', description: '', type: 'youtube', url: '', body:
 export default function Biblioteca({ activeTeam }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState('todos')
+  const [typeFilter, setTypeFilter] = useState('todos')
+  const [sessionFilter, setSessionFilter] = useState('todos')
+  const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
@@ -33,15 +35,16 @@ export default function Biblioteca({ activeTeam }) {
   const [preview, setPreview] = useState(null)
 
   const allSessions = TEAM_SESSIONS[activeTeam]
+  const uniqueDays = [...new Set(allSessions.map(s => s.day))].sort((a,b) => a-b)
 
-  useEffect(() => { loadItems() }, [activeTeam, filter])
+  useEffect(() => { loadItems() }, [activeTeam])
 
   async function loadItems() {
     setLoading(true)
-    let q = supabase.from('content_items').select('*').order('order_index').order('created_at', { ascending: false })
-    if (filter !== 'todos') q = q.eq('type', filter)
-    q = q.or(`team.eq.${activeTeam},team.eq.ambos`)
-    const { data } = await q
+    const { data } = await supabase
+      .from('content_items').select('*')
+      .or(`team.eq.${activeTeam},team.eq.ambos`)
+      .order('order_index').order('created_at', { ascending: false })
     setItems(data || [])
     setLoading(false)
   }
@@ -89,98 +92,160 @@ export default function Biblioteca({ activeTeam }) {
 
   const typeInfo = (type) => CONTENT_TYPES.find(t => t.key === type) || CONTENT_TYPES[0]
 
+  // Filtered items
+  const filtered = items.filter(item => {
+    const matchType = typeFilter === 'todos' || item.type === typeFilter
+    const matchSession = sessionFilter === 'todos' || item.session_keys?.includes(Number(sessionFilter)) || item.session_keys?.includes(sessionFilter)
+    const matchSearch = !search || item.title?.toLowerCase().includes(search.toLowerCase()) || item.description?.toLowerCase().includes(search.toLowerCase())
+    return matchType && matchSession && matchSearch
+  })
+
+  // Group by type for summary
+  const typeCounts = CONTENT_TYPES.reduce((acc, t) => {
+    acc[t.key] = items.filter(i => i.type === t.key).length
+    return acc
+  }, {})
+
   return (
     <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '22px 24px' }}>
 
       {/* Topbar */}
-      <div className="flex items-center justify-between" style={{ marginBottom: 18 }}>
+      <div className="flex items-center justify-between" style={{ marginBottom: 16 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700 }}>
             Biblioteca <span style={{ color: 'var(--auvo)' }}>{activeTeam === 'atendimento' ? 'Atendimento' : 'Vendas'}</span>
           </div>
-          <div style={{ fontSize: 12, color: 'var(--muted2)', marginTop: 2 }}>Conteúdos vinculados ao cronograma</div>
+          <div style={{ fontSize: 12, color: 'var(--muted2)', marginTop: 2 }}>
+            {items.length} conteúdo{items.length !== 1 ? 's' : ''} · {filtered.length} exibido{filtered.length !== 1 ? 's' : ''}
+          </div>
         </div>
         <button className="btn btn-primary" onClick={() => { setForm({ ...EMPTY_FORM, team: activeTeam }); setEditing(null); setShowAdd(true) }}>
           + Novo conteúdo
         </button>
       </div>
 
-      {/* Filters */}
-      <div className="flex gap-2" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
-        <button className={`pill ${filter === 'todos' ? 'active' : ''}`} onClick={() => setFilter('todos')}>Todos</button>
-        {CONTENT_TYPES.map(t => (
-          <button key={t.key} className={`pill ${filter === t.key ? 'active' : ''}`} onClick={() => setFilter(t.key)}>
-            {t.icon} {t.label}
+      {/* Filters bar */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        {/* Type filter */}
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          <button className={`pill ${typeFilter==='todos'?'active':''}`} onClick={() => setTypeFilter('todos')}>
+            Todos ({items.length})
           </button>
-        ))}
+          {CONTENT_TYPES.filter(t => typeCounts[t.key] > 0).map(t => (
+            <button key={t.key} className={`pill ${typeFilter===t.key?'active':''}`} onClick={() => setTypeFilter(t.key)}>
+              {t.icon} {t.label} ({typeCounts[t.key]})
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Content grid */}
+      {/* Search + session filter */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 12px' }}>
+          <span style={{ fontSize: 14, color: 'var(--muted)', flexShrink: 0 }}>🔍</span>
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar por título ou descrição..."
+            style={{ background: 'none', border: 'none', color: 'var(--text)', fontFamily: 'inherit', fontSize: 12, outline: 'none', width: '100%', padding: 0 }} />
+          {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 14, padding: 0 }}>✕</button>}
+        </div>
+        <select value={sessionFilter} onChange={e => setSessionFilter(e.target.value)}
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 12px', color: 'var(--text)', fontFamily: 'inherit', fontSize: 12, cursor: 'pointer', minWidth: 160 }}>
+          <option value="todos">Todas as sessões</option>
+          {uniqueDays.map(day => (
+            <option key={day} value={day}>Dia {day}</option>
+          ))}
+          <option value="[]">Sem sessão vinculada</option>
+        </select>
+      </div>
+
+      {/* Content list */}
       {loading ? (
         <div className="flex items-center" style={{ justifyContent: 'center', flex: 1 }}><div className="spinner" /></div>
-      ) : items.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--muted)' }}>
-          <div style={{ fontSize: 36, marginBottom: 12 }}>📚</div>
-          <div style={{ fontSize: 14, color: 'var(--muted2)', marginBottom: 6 }}>Nenhum conteúdo ainda</div>
-          <div style={{ fontSize: 12 }}>Clique em "+ Novo conteúdo" para adicionar</div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}>
+          <div style={{ fontSize: 32, marginBottom: 10 }}>📭</div>
+          <div style={{ fontSize: 13, color: 'var(--muted2)' }}>
+            {search || typeFilter !== 'todos' || sessionFilter !== 'todos' ? 'Nenhum resultado para os filtros aplicados' : 'Nenhum conteúdo ainda'}
+          </div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 12, flex: 1, overflowY: 'auto' }}>
-          {items.map(item => {
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {filtered.map(item => {
             const t = typeInfo(item.type)
             const tc = TYPE_COLORS[item.type] || TYPE_COLORS.youtube
             const ytId = item.type === 'youtube' ? getYoutubeId(item.url) : null
+
             return (
-              <div key={item.id} style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', background: 'var(--surface)', transition: 'all 0.15s', cursor: 'pointer' }}
+              <div key={item.id} style={{
+                display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
+                border: '1px solid var(--border)', borderRadius: 9,
+                background: 'var(--surface)', transition: 'all 0.1s',
+              }}
                 onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border2)'}
                 onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
               >
-                {/* Thumb */}
-                <div style={{ height: 90, background: 'var(--surface2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, position: 'relative' }}
-                  onClick={() => setPreview(item)}>
+                {/* Thumb pequeno */}
+                <div style={{ width: 44, height: 30, borderRadius: 6, overflow: 'hidden', flexShrink: 0, background: 'var(--surface2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>
                   {ytId ? (
                     <img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
                   ) : (
                     <span>{t.icon}</span>
                   )}
-                  <div style={{ position: 'absolute', top: 6, right: 6, fontSize: 8, padding: '2px 6px', borderRadius: 4, fontWeight: 700, letterSpacing: '0.05em', background: tc.bg, color: tc.color }}>
-                    {t.label.toUpperCase()}
-                  </div>
-                  {item.team === 'ambos' && (
-                    <div style={{ position: 'absolute', top: 6, left: 6, fontSize: 8, padding: '2px 6px', borderRadius: 4, background: 'rgba(255,255,255,0.1)', color: 'var(--muted2)' }}>
-                      Ambos os times
-                    </div>
+                </div>
+
+                {/* Type badge */}
+                <span style={{ fontSize: 8, padding: '2px 6px', borderRadius: 4, fontWeight: 700, letterSpacing: '0.04em', background: tc.bg, color: tc.color, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                  {t.label.toUpperCase()}
+                </span>
+
+                {/* Title + description */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title}</div>
+                  {item.description && (
+                    <div style={{ fontSize: 10, color: 'var(--muted2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>{item.description}</div>
                   )}
                 </div>
 
-                {/* Info */}
-                <div style={{ padding: 12 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.3, marginBottom: 4 }}>{item.title}</div>
-                  {item.description && <div style={{ fontSize: 10, color: 'var(--muted2)', marginBottom: 8, lineHeight: 1.4 }}>{item.description}</div>}
-                  {item.session_keys?.length > 0 && (
-                    <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', marginBottom: 8 }}>
-                      {item.session_keys.slice(0, 4).map(k => (
-                        <span key={k} style={{ fontSize: 8, padding: '2px 5px', borderRadius: 4, background: 'var(--auvo-dim)', color: 'var(--auvo)' }}>Dia {k}</span>
-                      ))}
-                      {item.session_keys.length > 4 && <span style={{ fontSize: 8, color: 'var(--muted)' }}>+{item.session_keys.length - 4}</span>}
-                    </div>
+                {/* Session chips */}
+                <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+                  {item.session_keys?.slice(0, 3).map(k => (
+                    <span key={k} style={{ fontSize: 9, padding: '2px 5px', borderRadius: 4, background: 'var(--auvo-dim)', color: 'var(--auvo)' }}>Dia {k}</span>
+                  ))}
+                  {item.session_keys?.length > 3 && <span style={{ fontSize: 9, color: 'var(--muted)' }}>+{item.session_keys.length - 3}</span>}
+                  {(!item.session_keys || item.session_keys.length === 0) && (
+                    <span style={{ fontSize: 9, color: 'var(--muted)' }}>—</span>
                   )}
-                  <div className="flex gap-2">
-                    {item.url && (
-                      <a href={item.url} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ fontSize: 9, color: 'var(--auvo)', textDecoration: 'none' }}>
-                        Abrir →
-                      </a>
-                    )}
-                    <button className="btn btn-sm" style={{ fontSize: 9 }} onClick={() => openEdit(item)}>✏️ Editar</button>
-                    {confirmDelete === item.id ? (
-                      <div className="flex gap-1" style={{ marginLeft: 'auto' }}>
-                        <button className="btn btn-sm btn-danger" style={{ fontSize: 9 }} onClick={() => deleteItem(item.id)}>Sim</button>
-                        <button className="btn btn-sm" style={{ fontSize: 9 }} onClick={() => setConfirmDelete(null)}>Não</button>
-                      </div>
-                    ) : (
-                      <button className="btn btn-sm" style={{ fontSize: 9, marginLeft: 'auto', color: 'var(--red)' }} onClick={() => setConfirmDelete(item.id)}>🗑️</button>
-                    )}
-                  </div>
+                </div>
+
+                {/* Team badge */}
+                {item.team === 'ambos' && (
+                  <span style={{ fontSize: 9, color: 'var(--muted)', flexShrink: 0 }}>🌐</span>
+                )}
+
+                {/* Actions */}
+                <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+                  {item.url && (
+                    <a href={item.url} target="_blank" rel="noreferrer"
+                      className="btn btn-sm" style={{ fontSize: 9, color: 'var(--auvo)', textDecoration: 'none', padding: '3px 8px' }}
+                      onClick={e => e.stopPropagation()}>
+                      Abrir →
+                    </a>
+                  )}
+                  {(item.type === 'youtube' || item.type === 'texto') && (
+                    <button className="btn btn-sm" style={{ fontSize: 9, padding: '3px 8px' }}
+                      onClick={() => setPreview(item)}>
+                      👁️
+                    </button>
+                  )}
+                  <button className="btn btn-sm" style={{ fontSize: 9, padding: '3px 8px' }} onClick={() => openEdit(item)}>✏️</button>
+                  {confirmDelete === item.id ? (
+                    <>
+                      <button className="btn btn-danger btn-sm" style={{ fontSize: 9, padding: '3px 8px' }} onClick={() => deleteItem(item.id)}>Sim</button>
+                      <button className="btn btn-sm" style={{ fontSize: 9, padding: '3px 8px' }} onClick={() => setConfirmDelete(null)}>Não</button>
+                    </>
+                  ) : (
+                    <button className="btn btn-sm" style={{ fontSize: 9, padding: '3px 8px', color: 'var(--red)' }} onClick={() => setConfirmDelete(item.id)}>🗑️</button>
+                  )}
                 </div>
               </div>
             )
@@ -252,7 +317,8 @@ export default function Biblioteca({ activeTeam }) {
                   {allSessions.map(s => (
                     <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 6, border: `1px solid ${form.session_keys?.includes(s.id) ? 'var(--auvo-border)' : 'var(--border)'}`, cursor: 'pointer', marginBottom: 0, background: form.session_keys?.includes(s.id) ? 'var(--auvo-dim)' : 'transparent', fontSize: 11 }}>
                       <input type="checkbox" checked={form.session_keys?.includes(s.id) || false} onChange={() => toggleSession(s.id)} />
-                      Dia {s.day} — {s.title}
+                      <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: 'var(--surface3)', color: 'var(--muted)', flexShrink: 0 }}>Dia {s.day}</span>
+                      {s.title}
                     </label>
                   ))}
                 </div>
