@@ -24,7 +24,7 @@ export default function Trilha() {
   const [showingVideo, setShowingVideo] = useState(null)
 
   // Rotas do enablement que não devem cair aqui
-  const ENABLEMENT_ROUTES = ['exercicios','onboarding','biblioteca','revisoes','avaliacoes','gamificacao','trilhas','rh','configuracoes']
+  const ENABLEMENT_ROUTES = ['exercicios','onboarding','biblioteca','revisoes','avaliacoes','gamificacao','trilhas','rh','configuracoes','requalificacao']
   const isEnablementRoute = ENABLEMENT_ROUTES.includes(token)
 
   useEffect(() => {
@@ -51,7 +51,7 @@ export default function Trilha() {
   async function loadAll(silent = false) {
     if (!silent) setLoading(true)
     const { data: a } = await supabase.from('analysts').select('*').eq('access_token', token).single()
-    if (!a) { setLoading(false); return }
+    if (!a || a.status === 'requalificacao') { setLoading(false); return }
     setAnalyst(a)
 
     const [{ data: sess }, { data: cont }, { data: gam }, { data: er }, { data: exForms }, { data: exResp }] = await Promise.all([
