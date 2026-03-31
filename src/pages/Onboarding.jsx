@@ -46,9 +46,9 @@ export default function Onboarding({ activeTeam }) {
       .then(({ data }) => setSettings(data))
   }, [activeTeam])
 
-  async function loadAnalysts() {
+  async function loadAnalysts(preserveSelected = false) {
     setLoading(true)
-    setSelectedId(null)
+    if (!preserveSelected) setSelectedId(null)
 
     const { data: analystData, error } = await supabase
       .from('analysts')
@@ -242,7 +242,7 @@ export default function Onboarding({ activeTeam }) {
     await supabase.from('sessions').update({ completed: false, completed_at: null }).eq('id', sessionId)
     setConfirmUncheck(null)
     loadSessions(selectedId)
-    loadAnalysts()
+    loadAnalysts(true)
   }
 
   async function toggleSession(session) {
@@ -268,7 +268,7 @@ export default function Onboarding({ activeTeam }) {
     }
 
     loadSessions(selectedId)
-    loadAnalysts()
+    loadAnalysts(true)
   }
 
   async function saveNote(sessionId) {
@@ -291,7 +291,7 @@ export default function Onboarding({ activeTeam }) {
     })
     setShowExit(false)
     setExitForm({ reason: '', detail: '', date: '' })
-    loadAnalysts()
+    loadAnalysts(false)
   }
 
   const selected = analysts.find(a => a.id === selectedId)
