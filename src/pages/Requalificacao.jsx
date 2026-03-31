@@ -26,7 +26,8 @@ export default function Requalificacao({ activeTeam }) {
   const [showPlanForm, setShowPlanForm] = useState(false)
   const [showItemForm, setShowItemForm] = useState(false)
   const [editingItem, setEditingItem] = useState(null)
-  const [planForm, setPlanForm] = useState({ analyst_id: '', title: 'Plano de Requalificação', reason: '' })
+  const [planForm, setPlanForm] = useState({ analyst_id: '', analyst_name_free: '', title: 'Plano de Requalificação', reason: '' })
+  const [analystMode, setAnalystMode] = useState('existing') // 'existing' | 'free'
   const [itemForm, setItemForm] = useState({ title: '', type: 'treinamento', description: '', order_index: 0 })
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(null)
@@ -54,14 +55,32 @@ export default function Requalificacao({ activeTeam }) {
   }
 
   async function savePlan() {
-    if (!planForm.analyst_id || !planForm.title) return
+    const hasAnalyst = analystMode === 'existing' ? !!planForm.analyst_id : !!planForm.analyst_name_free
+    if (!hasAnalyst || !planForm.title) return
     setSaving(true)
+
+    let analystId = planForm.analyst_id
+    // Se nome livre, cria um registro mínimo na tabela analysts
+    if (analystMode === 'free' && planForm.analyst_name_free) {
+      const { data: newA } = await supabase.from('analysts').insert({
+        name: planForm.analyst_name_free,
+        email: `requalificacao_${Date.now()}@interno`,
+        team: activeTeam,
+        start_date: new Date().toISOString().split('T')[0],
+        status: 'ativo',
+      }).select().single()
+      analystId = newA?.id
+    }
+
+    if (!analystId) { setSaving(false); return }
+
     const { data } = await supabase.from('requalification_plans')
-      .insert({ ...planForm, team: activeTeam, created_by: 'enablement' })
+      .insert({ ...planForm, analyst_id: analystId, team: activeTeam, created_by: 'enablement' })
       .select('*, analysts(name, email)').single()
     setSaving(false)
     setShowPlanForm(false)
-    setPlanForm({ analyst_id: '', title: 'Plano de Requalificação', reason: '' })
+    setAnalystMode('existing')
+    setPlanForm({ analyst_id: '', analyst_name_free: '', title: 'Plano de Requalificação', reason: '' })
     await load()
     if (data) setSelectedPlan(data)
   }
@@ -300,12 +319,29 @@ export default function Requalificacao({ activeTeam }) {
               <button className="modal-close" onClick={() => setShowPlanForm(false)}>✕</button>
             </div>
             <div className="modal-body">
+              {/* Analista */}
               <div className="form-group">
                 <label>Analista</label>
-                <select value={planForm.analyst_id} onChange={e => setPlanForm(f => ({ ...f, analyst_id: e.target.value }))}>
-                  <option value="">Selecione o analista...</option>
-                  {analysts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                </select>
+                <div className="flex gap-2" style={{ marginBottom: 8 }}>
+                  {[['existing','Analista cadastrado'],['free','Novo nome livre']].map(([k,l]) => (
+                    <button key={k} onClick={() => setAnalystMode(k)}
+                      style={{ flex: 1, padding: '7px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit', fontSize: 11,
+                        border: `1px solid ${analystMode===k?'var(--auvo-border)':'var(--border)'}`,
+                        background: analystMode===k?'var(--auvo-dim)':'transparent',
+                        color: analystMode===k?'var(--auvo)':'var(--muted2)' }}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+                {analystMode === 'existing' ? (
+                  <select value={planForm.analyst_id} onChange={e => setPlanForm(f => ({ ...f, analyst_id: e.target.value }))}>
+                    <option value="">Selecione o analista...</option>
+                    {analysts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                ) : (
+                  <input value={planForm.analyst_name_free} onChange={e => setPlanForm(f => ({ ...f, analyst_name_free: e.target.value }))}
+                    placeholder="Nome do analista veterano" />
+                )}
               </div>
               <div className="form-group">
                 <label>Título do plano</label>
@@ -315,9 +351,9 @@ export default function Requalificacao({ activeTeam }) {
                 <label>Motivo da requalificação</label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {REASONS.map(r => (
-                    <label key={r} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 7, border: `1px solid ${planForm.reason===r?'var(--auvo-border)':'var(--border)'}`, background: planForm.reason===r?'var(--auvo-dim)':'transparent', cursor: 'pointer', marginBottom: 0, fontSize: 12 }}>
-                      <input type="radio" checked={planForm.reason===r} onChange={() => setPlanForm(f => ({ ...f, reason: r }))} />
-                      {r}
+                    <label key={r} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 7, border: `1px solid ${planForm.reason===r?'var(--auvo-border)':'var(--border)'}`, background: planForm.reason===r?'var(--auvo-dim)':'transparent', cursor: 'pointer', marginBottom: 0, fontSize: 12 }}>
+                      <input type="radio" checked={planForm.reason===r} onChange={() => setPlanForm(f => ({ ...f, reason: r }))} style={{ flexShrink: 0, accentColor: 'var(--auvo)' }} />
+                      <span>{r}</span>
                     </label>
                   ))}
                 </div>
@@ -325,7 +361,7 @@ export default function Requalificacao({ activeTeam }) {
             </div>
             <div className="modal-footer">
               <button className="btn" onClick={() => setShowPlanForm(false)}>Cancelar</button>
-              <button className="btn btn-primary" onClick={savePlan} disabled={saving || !planForm.analyst_id}>
+              <button className="btn btn-primary" onClick={savePlan} disabled={saving || (analystMode==='existing' ? !planForm.analyst_id : !planForm.analyst_name_free)}>
                 {saving ? 'Criando...' : 'Criar plano'}
               </button>
             </div>
