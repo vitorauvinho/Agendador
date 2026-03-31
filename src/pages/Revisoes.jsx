@@ -81,12 +81,16 @@ export default function Revisoes({ activeTeam }) {
       <div className="flex items-center justify-between" style={{ marginBottom: 18 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700 }}>
-            Revisões <span style={{ color: 'var(--auvo)' }}>pendentes</span>
+            Revisões <span style={{ color: showReviewed ? 'var(--green)' : 'var(--auvo)' }}>{showReviewed ? 'concluídas' : 'pendentes'}</span>
           </div>
           <div style={{ fontSize: 12, color: 'var(--muted2)', marginTop: 2 }}>
-            {total > 0 ? `${total} item${total > 1 ? 's' : ''} aguardando revisão` : 'Tudo em dia!'}
+            {showReviewed ? 'Histórico de revisões feitas' : (total > 0 ? `${total} item${total > 1 ? 's' : ''} aguardando revisão` : 'Tudo em dia!')}
           </div>
         </div>
+        <button className="btn btn-sm" onClick={() => setShowReviewed(r => !r)}
+          style={{ fontSize: 11, color: showReviewed ? 'var(--auvo)' : 'var(--green)', borderColor: showReviewed ? 'var(--auvo-border)' : 'rgba(16,185,129,0.3)', background: showReviewed ? 'var(--auvo-dim)' : 'var(--green-dim)' }}>
+          {showReviewed ? '📋 Ver pendentes' : '✅ Ver revisados'}
+        </button>
       </div>
 
       {/* Filters */}
