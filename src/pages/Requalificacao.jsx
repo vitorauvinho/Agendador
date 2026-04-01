@@ -43,7 +43,7 @@ export default function Requalificacao({ activeTeam }) {
       supabase.from('requalification_plans').select('*, analysts(name, email)')
         .eq('team', activeTeam).order('created_at', { ascending: false }),
       // Note: analysts with requalificacao_ prefix emails are internal only
-      supabase.from('analysts').select('id, name, email').eq('team', activeTeam).eq('status', 'ativo'),
+      supabase.from('analysts').select('id, name, email').eq('team', activeTeam).in('status', ['ativo', 'concluido']),
     ])
     setPlans(pl || [])
     setAnalysts(ana || [])
@@ -57,8 +57,13 @@ export default function Requalificacao({ activeTeam }) {
   }
 
   async function savePlan() {
+    console.log('savePlan called', { analystMode, planForm })
     const hasAnalyst = analystMode === 'existing' ? !!planForm.analyst_id : !!planForm.analyst_name_free
-    if (!hasAnalyst || !planForm.title) return
+    console.log('hasAnalyst:', hasAnalyst, 'title:', planForm.title)
+    if (!hasAnalyst || !planForm.title) {
+      console.log('returning early - missing analyst or title')
+      return
+    }
     setSaving(true)
 
     let analystId = planForm.analyst_id
@@ -174,7 +179,7 @@ export default function Requalificacao({ activeTeam }) {
           </div>
           <div style={{ fontSize: 12, color: 'var(--muted2)', marginTop: 2 }}>Planos de retreinamento para analistas veteranos</div>
         </div>
-        <button className="btn btn-primary" onClick={() => { setPlanForm({ analyst_id: '', title: 'Plano de Requalificação', reason: '' }); setShowPlanForm(true) }}>
+        <button className="btn btn-primary" onClick={() => { setPlanForm({ analyst_id: '', analyst_name_free: '', title: 'Plano de Requalificação', reason: '' }); setAnalystMode('existing'); setShowReasons(false); setShowPlanForm(true) }}>
           + Novo plano
         </button>
       </div>
@@ -329,7 +334,7 @@ export default function Requalificacao({ activeTeam }) {
           <div className="modal" style={{ width: 520 }}>
             <div className="modal-header">
               <div className="modal-title">Novo plano de requalificação</div>
-              <button className="modal-close" onClick={() => setShowPlanForm(false)}>✕</button>
+              <button className="modal-close" onClick={() => { setShowPlanForm(false); setAnalystMode('existing'); setShowReasons(false) }}>✕</button>
             </div>
             <div className="modal-body">
               {/* Analista */}
@@ -384,7 +389,7 @@ export default function Requalificacao({ activeTeam }) {
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn" onClick={() => setShowPlanForm(false)}>Cancelar</button>
+              <button className="btn" onClick={() => { setShowPlanForm(false); setAnalystMode('existing'); setShowReasons(false) }}>Cancelar</button>
               <button className="btn btn-primary" onClick={savePlan} disabled={saving || (analystMode==='existing' ? !planForm.analyst_id : !planForm.analyst_name_free)}>
                 {saving ? 'Criando...' : 'Criar plano'}
               </button>
