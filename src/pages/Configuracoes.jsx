@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, TEAM_SESSIONS } from '../lib/supabase'
 
 export default function Configuracoes({ activeTeam }) {
   const [form, setForm] = useState({ my_email: '', webhook_url: '', logo_url: '', company_name: 'Auvo' })
@@ -12,6 +12,7 @@ export default function Configuracoes({ activeTeam }) {
   const [sessionForm, setSessionForm] = useState({ title: '', type: 'treinamento', day: '' })
   const [savingSession, setSavingSession] = useState(false)
   const [confirmDeleteSession, setConfirmDeleteSession] = useState(null)
+  const [sessionMode, setSessionMode] = useState('existing') // 'existing' | 'custom'
   const [uploadError, setUploadError] = useState('')
   const fileInputRef = useRef()
 
@@ -231,33 +232,90 @@ export default function Configuracoes({ activeTeam }) {
                   </div>
                   <div className="modal-body">
                     <div className="form-group">
-                      <label>Tipo</label>
+                      <label>Como deseja adicionar?</label>
                       <div className="flex gap-2">
-                        {[['treinamento','📚 Treinamento'],['simulacao','🎯 Simulação']].map(([k,l]) => (
-                          <button key={k} onClick={() => setSessionForm(f => ({ ...f, type: k }))}
-                            style={{ flex: 1, padding: '8px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12,
-                              border: `1px solid ${sessionForm.type === k ? 'var(--auvo-border)' : 'var(--border)'}`,
-                              background: sessionForm.type === k ? 'var(--auvo-dim)' : 'transparent',
-                              color: sessionForm.type === k ? 'var(--auvo)' : 'var(--muted2)' }}>
+                        {[['existing','📋 Sessão existente'],['custom','✏️ Nova sessão']].map(([k,l]) => (
+                          <button key={k} onClick={() => { setSessionMode(k); setSessionForm({ title: '', type: 'treinamento', day: '' }) }}
+                            style={{ flex: 1, padding: '8px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit', fontSize: 11,
+                              border: `1px solid ${sessionMode === k ? 'var(--auvo-border)' : 'var(--border)'}`,
+                              background: sessionMode === k ? 'var(--auvo-dim)' : 'transparent',
+                              color: sessionMode === k ? 'var(--auvo)' : 'var(--muted2)' }}>
                             {l}
                           </button>
                         ))}
                       </div>
                     </div>
-                    <div className="form-group">
-                      <label>Título da sessão</label>
-                      <input value={sessionForm.title} onChange={e => setSessionForm(f => ({ ...f, title: e.target.value }))}
-                        placeholder="Ex: Módulo Financeiro Avançado" />
-                    </div>
-                    <div className="form-group">
-                      <label>Dia do cronograma</label>
-                      <input type="number" min="1" max="30" value={sessionForm.day}
-                        onChange={e => setSessionForm(f => ({ ...f, day: e.target.value }))}
-                        placeholder="Ex: 5" style={{ width: 100 }} />
-                      <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4 }}>
-                        Dia em que a sessão ocorre no cronograma (1–30)
-                      </div>
-                    </div>
+                    {sessionMode === 'existing' ? (
+                      <>
+                        <div className="form-group">
+                          <label>Selecionar do cronograma padrão</label>
+                          <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {TEAM_SESSIONS[activeTeam].map(s => {
+                              const isSelected = sessionForm.title === s.title && sessionForm.type === s.type
+                              return (
+                                <div key={s.id} onClick={() => setSessionForm(f => ({ ...f, title: s.title, type: s.type }))}
+                                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8,
+                                    border: `1px solid ${isSelected ? 'var(--auvo-border)' : 'var(--border)'}`,
+                                    background: isSelected ? 'var(--auvo-dim)' : 'var(--surface2)', cursor: 'pointer' }}>
+                                  <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 4, flexShrink: 0,
+                                    background: s.type === 'treinamento' ? 'var(--auvo-dim)' : 'var(--green-dim)',
+                                    color: s.type === 'treinamento' ? 'var(--auvo)' : 'var(--green)', fontWeight: 600 }}>
+                                    Dia {s.day}
+                                  </span>
+                                  <span style={{ fontSize: 12, flex: 1 }}>{s.title}</span>
+                                  <span style={{ fontSize: 10, color: 'var(--muted)', flexShrink: 0 }}>
+                                    {s.type === 'treinamento' ? '📚' : '🎯'}
+                                  </span>
+                                  {isSelected && <span style={{ fontSize: 12, color: 'var(--auvo)', flexShrink: 0 }}>✓</span>}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                        {sessionForm.title && (
+                          <div className="form-group">
+                            <label>Em qual dia do cronograma?</label>
+                            <input type="number" min="1" max="30" value={sessionForm.day}
+                              onChange={e => setSessionForm(f => ({ ...f, day: e.target.value }))}
+                              placeholder="Ex: 22" style={{ width: 120 }} />
+                            <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4 }}>
+                              Sessão selecionada: <strong>{sessionForm.title}</strong>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <div className="form-group">
+                          <label>Tipo</label>
+                          <div className="flex gap-2">
+                            {[['treinamento','📚 Treinamento'],['simulacao','🎯 Simulação']].map(([k,l]) => (
+                              <button key={k} onClick={() => setSessionForm(f => ({ ...f, type: k }))}
+                                style={{ flex: 1, padding: '8px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12,
+                                  border: `1px solid ${sessionForm.type === k ? 'var(--auvo-border)' : 'var(--border)'}`,
+                                  background: sessionForm.type === k ? 'var(--auvo-dim)' : 'transparent',
+                                  color: sessionForm.type === k ? 'var(--auvo)' : 'var(--muted2)' }}>
+                                {l}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="form-group">
+                          <label>Título da sessão</label>
+                          <input value={sessionForm.title} onChange={e => setSessionForm(f => ({ ...f, title: e.target.value }))}
+                            placeholder="Ex: Módulo Financeiro Avançado" />
+                        </div>
+                        <div className="form-group">
+                          <label>Dia do cronograma</label>
+                          <input type="number" min="1" max="30" value={sessionForm.day}
+                            onChange={e => setSessionForm(f => ({ ...f, day: e.target.value }))}
+                            placeholder="Ex: 5" style={{ width: 100 }} />
+                          <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4 }}>
+                            Dia em que a sessão ocorre no cronograma (1–30)
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                   <div className="modal-footer">
                     <button className="btn" onClick={() => setShowSessionForm(false)}>Cancelar</button>
