@@ -10,7 +10,7 @@ export default function Onboarding({ activeTeam }) {
   const [showExit, setShowExit] = useState(false)
   const [showNote, setShowNote] = useState(null)
   const [filter, setFilter] = useState('todos')
-  const [form, setForm] = useState({ name: '', email: '', startDate: '', mode: 'all', picked: [] })
+  const [form, setForm] = useState({ name: '', email: '', startDate: '', mode: 'all', picked: [], turmaMode: false, turmaIds: [] })
   const [exitForm, setExitForm] = useState({ reason: '', detail: '', date: '' })
   const [noteText, setNoteText] = useState('')
   const [saving, setSaving] = useState(false)
@@ -35,9 +35,16 @@ export default function Onboarding({ activeTeam }) {
   const [savingEx, setSavingEx] = useState(false)
   const [confirmDeleteEx, setConfirmDeleteEx] = useState(null)
 
-  const allSessions = TEAM_SESSIONS[activeTeam]
+  const [customSessionsList, setCustomSessionsList] = useState([])
+  const allSessions = [
+    ...TEAM_SESSIONS[activeTeam],
+    ...customSessionsList.map(s => ({ id: `custom_${s.id}`, day: s.day, type: s.type, title: s.title }))
+  ].sort((a, b) => a.day - b.day || a.title.localeCompare(b.title))
 
-  useEffect(() => { loadAnalysts() }, [activeTeam])
+  useEffect(() => { 
+    loadAnalysts()
+    loadCustomSessions()
+  }, [activeTeam])
   useEffect(() => { if (activeTab === 'trilhas') loadTrilhas() }, [activeTab, activeTeam])
   useEffect(() => { if (activeTab === 'exercicios') loadExercicios() }, [activeTab, activeTeam])
   useEffect(() => { if (selectedId) loadSessions(selectedId) }, [selectedId])
@@ -45,6 +52,15 @@ export default function Onboarding({ activeTeam }) {
     supabase.from('team_settings').select('*').eq('team', activeTeam).single()
       .then(({ data }) => setSettings(data))
   }, [activeTeam])
+
+  async function loadCustomSessions() {
+    const { data } = await supabase
+      .from('custom_sessions')
+      .select('*')
+      .eq('team', activeTeam)
+      .order('day').order('created_at')
+    setCustomSessionsList(data || [])
+  }
 
   async function loadAnalysts(preserveSelected = false) {
     setLoading(true)
@@ -152,6 +168,24 @@ export default function Onboarding({ activeTeam }) {
       ? allSessions
       : allSessions.filter(s => form.picked.includes(s.id))
 
+    // Modo turma: cadastra múltiplos analistas com mesmas sessões
+    if (form.turmaMode && form.turmaIds.length > 0) {
+      for (const turmaId of form.turmaIds) {
+        const turmaAnalyst = analysts.find(a => a.id === turmaId)
+        if (!turmaAnalyst) continue
+        const { data: existingSessions } = await supabase
+          .from('sessions').select('id').eq('analyst_id', turmaId)
+        if (!existingSessions?.length) {
+          const rows = sessionsToUse.map(s => ({
+            analyst_id: turmaId, session_key: s.id,
+            day_number: s.day, type: s.type, title: s.title,
+          }))
+          await supabase.from('sessions').insert(rows)
+          await supabase.from('analyst_gamification').upsert({ analyst_id: turmaId }, { onConflict: 'analyst_id' })
+        }
+      }
+    }
+
     const { data: analyst, error } = await supabase
       .from('analysts')
       .insert({ name: form.name, email: form.email, team: activeTeam, start_date: form.startDate })
@@ -190,6 +224,9 @@ export default function Onboarding({ activeTeam }) {
             analystName: analyst.name, analystEmail: analyst.email,
             myEmail: settings.my_email, startDate: form.startDate,
             sessions: sessionsToUse.map(s => ({ day: s.day, type: s.type, title: s.title, durationMinutes: 60 })),
+            turmaEmails: form.turmaMode && form.turmaIds.length > 0
+              ? analysts.filter(a => form.turmaIds.includes(a.id)).map(a => a.email)
+              : [],
           }),
         })
         setWebhookStatus('success')
@@ -869,6 +906,37 @@ export default function Onboarding({ activeTeam }) {
                     onChange={e => setForm(x => ({ ...x, [f.key]: e.target.value }))} />
                 </div>
               ))}
+
+              {/* Modo Turma */}
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 0 }}>
+                  <input type="checkbox" checked={form.turmaMode}
+                    onChange={e => setForm(x => ({ ...x, turmaMode: e.target.checked, turmaIds: [] }))}
+                    style={{ accentColor: 'var(--auvo)', width: 14, height: 14 }} />
+                  <span>👥 Adicionar a uma turma (compartilhar reuniões no Meet)</span>
+                </label>
+                {form.turmaMode && (
+                  <div style={{ marginTop: 10, maxHeight: 140, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ fontSize: 11, color: 'var(--muted2)', marginBottom: 4 }}>
+                      Selecione os analistas que farão parte da mesma turma:
+                    </div>
+                    {analysts.filter(a => a.status === 'ativo').map(a => (
+                      <label key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6,
+                        border: `1px solid ${form.turmaIds.includes(a.id) ? 'var(--auvo-border)' : 'var(--border)'}`,
+                        background: form.turmaIds.includes(a.id) ? 'var(--auvo-dim)' : 'transparent', cursor: 'pointer', marginBottom: 0, fontSize: 11 }}>
+                        <input type="checkbox" checked={form.turmaIds.includes(a.id)}
+                          onChange={() => setForm(x => ({
+                            ...x, turmaIds: x.turmaIds.includes(a.id)
+                              ? x.turmaIds.filter(id => id !== a.id)
+                              : [...x.turmaIds, a.id]
+                          }))}
+                          style={{ accentColor: 'var(--auvo)', width: 13, height: 13 }} />
+                        {a.name}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <div className="form-group">
                 <label>Modo de agendamento</label>
