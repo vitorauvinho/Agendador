@@ -302,7 +302,7 @@ export default function Trilha() {
                                 >
                                   <div className="flex items-center gap-2">
                                     <input type="checkbox" checked={session.completed} onChange={() => !session.completed && handleComplete(session)}
-                                      style={{ accentColor: 'var(--green)', flexShrink: 0, pointerEvents: 'none' }} />
+                                      style={{ accentColor: 'var(--green)', flexShrink: 0, cursor: 'pointer' }} />
                                     <span style={{ flex: 1, textDecoration: session.completed ? 'line-through' : 'none', color: session.completed ? 'var(--muted)' : isNext ? 'var(--auvo)' : 'var(--text)', fontWeight: isNext ? 600 : 400 }}>
                                       {session.title} {isNext && '← próxima'}
                                     </span>
