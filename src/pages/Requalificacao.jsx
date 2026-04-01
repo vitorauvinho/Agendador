@@ -76,7 +76,7 @@ export default function Requalificacao({ activeTeam }) {
         email: `rq_${Date.now()}@interno`,
         team: activeTeam,
         start_date: new Date().toISOString().split('T')[0],
-        status: 'requalificacao',
+        status: 'ativo',
         access_token: rqToken,
       }).select().single()
       if (anaError) {
