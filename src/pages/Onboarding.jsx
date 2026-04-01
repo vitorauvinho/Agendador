@@ -54,7 +54,7 @@ export default function Onboarding({ activeTeam }) {
       .from('analysts')
       .select('*')
       .eq('team', activeTeam)
-      .neq('status', 'requalificacao')
+      .not('email', 'like', 'rq\_%')
       .order('created_at', { ascending: false })
 
     if (error || !analystData) { setLoading(false); return }
