@@ -170,6 +170,9 @@ export default function Onboarding({ activeTeam }) {
 
     // Modo turma: cadastra múltiplos analistas novos de uma vez
     if (form.turmaMode) {
+      if (!form.startDate) { setSaving(false); alert('Preencha a data de início!'); return }
+      if (!form.name || !form.email) { setSaving(false); alert('Preencha nome e email do primeiro analista!'); return }
+
       const allTurmaAnalysts = [
         { name: form.name, email: form.email },
         ...form.turmaAnalysts
@@ -181,12 +184,13 @@ export default function Onboarding({ activeTeam }) {
       for (const a of allTurmaAnalysts) {
         const { data: newA, error } = await supabase
           .from('analysts')
-          .insert({ name: a.name, email: a.email, team: activeTeam, start_date: form.startDate })
+          .insert({ name: a.name, email: a.email, team: activeTeam, start_date: form.startDate, status: 'ativo' })
           .select().single()
+        if (error) { console.error('Erro ao criar analista:', a.name, error); continue }
         if (error || !newA) continue
         createdAnalysts.push(newA)
         const rows = sessionsToUse.map(s => ({
-          analyst_id: newA.id, session_key: s.id,
+          analyst_id: newA.id, session_key: String(s.id).replace('custom_', ''),
           day_number: s.day, type: s.type, title: s.title,
         }))
         await supabase.from('sessions').insert(rows)
@@ -230,9 +234,10 @@ export default function Onboarding({ activeTeam }) {
     // Modo individual
     if (!form.name || !form.email || !form.startDate) { setSaving(false); return }
 
+    const token = Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2) + Date.now().toString(36)
     const { data: analyst, error } = await supabase
       .from('analysts')
-      .insert({ name: form.name, email: form.email, team: activeTeam, start_date: form.startDate })
+      .insert({ name: form.name, email: form.email, team: activeTeam, start_date: form.startDate, access_token: token, status: 'ativo' })
       .select().single()
 
     if (error || !analyst) { setSaving(false); return }
@@ -1035,7 +1040,7 @@ export default function Onboarding({ activeTeam }) {
             </div>
             <div className="modal-footer">
               <button className="btn" onClick={() => setShowAdd(false)}>Cancelar</button>
-              <button className="btn btn-primary" onClick={addAnalyst} disabled={saving || (!form.turmaMode && (!form.name || !form.email || !form.startDate)) || (form.mode==='custom' && !form.turmaMode && !form.picked.length)}>
+              <button className="btn btn-primary" onClick={addAnalyst} disabled={saving || !form.startDate || (!form.turmaMode && (!form.name || !form.email)) || (form.mode==='custom' && !form.turmaMode && !form.picked.length)}>
                 {saving ? 'Cadastrando...' : form.turmaMode ? `Cadastrar turma (${1 + form.turmaAnalysts.length} analistas)` : `Cadastrar ${form.mode==='custom'?`(${form.picked.length} sessões)`:'(todas as sessões)'}`}
               </button>
             </div>
