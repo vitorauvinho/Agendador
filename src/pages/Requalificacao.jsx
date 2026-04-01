@@ -66,20 +66,26 @@ export default function Requalificacao({ activeTeam }) {
     if (analystMode === 'free' && planForm.analyst_name_free) {
       const { data: newA } = await supabase.from('analysts').insert({
         name: planForm.analyst_name_free,
-        email: `requalificacao_${Date.now()}@interno`,
+        email: `rq_${Date.now()}@interno`,
         team: activeTeam,
         start_date: new Date().toISOString().split('T')[0],
         status: 'requalificacao',
-        access_token: null,
       }).select().single()
       analystId = newA?.id
     }
 
     if (!analystId) { setSaving(false); return }
 
-    const { data } = await supabase.from('requalification_plans')
-      .insert({ ...planForm, analyst_id: analystId, team: activeTeam, created_by: 'enablement' })
+    const { data, error: planError } = await supabase.from('requalification_plans')
+      .insert({ analyst_id: analystId, title: planForm.title, reason: planForm.reason, team: activeTeam, created_by: 'enablement', status: 'em_andamento' })
       .select('*, analysts(name, email)').single()
+    
+    if (planError) {
+      console.error('Erro ao criar plano:', planError)
+      alert('Erro ao criar plano: ' + planError.message)
+      setSaving(false)
+      return
+    }
     setSaving(false)
     setShowPlanForm(false)
     setAnalystMode('existing')
