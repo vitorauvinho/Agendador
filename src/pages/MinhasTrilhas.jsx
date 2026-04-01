@@ -179,7 +179,7 @@ export default function MinhasTrilhas() {
                   const ytId = item.type === 'youtube' ? getYoutubeId(item.url) : null
                   return (
                     <div key={item.id}
-                      onClick={() => setPlaying(item)}
+                      onClick={() => { setPlaying(item) }}
                       style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', border: `1px solid ${isPlaying ? 'var(--auvo-border)' : watched ? 'rgba(16,185,129,0.2)' : 'var(--border)'}`, borderRadius: 10, background: isPlaying ? 'var(--auvo-dim)' : watched ? 'rgba(16,185,129,0.04)' : 'var(--surface)', cursor: 'pointer', transition: 'all 0.15s' }}
                       onMouseEnter={e => { if (!isPlaying) e.currentTarget.style.borderColor = 'var(--border2)' }}
                       onMouseLeave={e => { if (!isPlaying) e.currentTarget.style.borderColor = watched ? 'rgba(16,185,129,0.2)' : 'var(--border)' }}
