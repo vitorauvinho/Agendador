@@ -12,7 +12,10 @@ export default function Configuracoes({ activeTeam }) {
   const [sessionForm, setSessionForm] = useState({ title: '', type: 'treinamento', day: '' })
   const [savingSession, setSavingSession] = useState(false)
   const [confirmDeleteSession, setConfirmDeleteSession] = useState(null)
+  const [editingSessionId, setEditingSessionId] = useState(null)
+  const [editingSessionTitle, setEditingSessionTitle] = useState('')
   const [sessionMode, setSessionMode] = useState('existing') // 'existing' | 'custom'
+  const [selectedSessions, setSelectedSessions] = useState([]) // for multi-select
   const [uploadError, setUploadError] = useState('')
   const fileInputRef = useRef()
 
@@ -28,17 +31,29 @@ export default function Configuracoes({ activeTeam }) {
   }
 
   async function saveSession() {
-    if (!sessionForm.title || !sessionForm.day) return
     setSavingSession(true)
-    await supabase.from('custom_sessions').insert({
-      title: sessionForm.title,
-      type: sessionForm.type,
-      day: parseInt(sessionForm.day),
-      team: activeTeam,
-    })
+    if (sessionMode === 'existing' && selectedSessions.length > 0 && sessionForm.day) {
+      // Insert multiple sessions at once
+      const rows = selectedSessions.map(s => ({
+        title: s.title, type: s.type,
+        day: parseInt(sessionForm.day),
+        team: activeTeam,
+      }))
+      await supabase.from('custom_sessions').insert(rows)
+    } else if (sessionForm.title && sessionForm.day) {
+      await supabase.from('custom_sessions').insert({
+        title: sessionForm.title, type: sessionForm.type,
+        day: parseInt(sessionForm.day), team: activeTeam,
+      })
+    } else {
+      setSavingSession(false)
+      return
+    }
     setSavingSession(false)
     setShowSessionForm(false)
     setSessionForm({ title: '', type: 'treinamento', day: '' })
+    setSelectedSessions([])
+    setSessionMode('existing')
     loadCustomSessions()
   }
 
@@ -228,7 +243,7 @@ export default function Configuracoes({ activeTeam }) {
                 <div className="modal" style={{ width: 400 }}>
                   <div className="modal-header">
                     <div className="modal-title">Nova sessão</div>
-                    <button className="modal-close" onClick={() => setShowSessionForm(false)}>✕</button>
+                    <button className="modal-close" onClick={() => { setShowSessionForm(false); setSelectedSessions([]); setSessionMode('existing') }}>✕</button>
                   </div>
                   <div className="modal-body">
                     <div className="form-group">
@@ -249,14 +264,21 @@ export default function Configuracoes({ activeTeam }) {
                       <>
                         <div className="form-group">
                           <label>Selecionar do cronograma padrão</label>
+                          <div style={{ fontSize: 10, color: 'var(--muted2)', marginBottom: 6 }}>
+                            Clique para selecionar uma ou mais sessões · {selectedSessions.length} selecionada{selectedSessions.length !== 1 ? 's' : ''}
+                          </div>
                           <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
                             {TEAM_SESSIONS[activeTeam].map(s => {
-                              const isSelected = sessionForm.title === s.title && sessionForm.type === s.type
+                              const isSelected = selectedSessions.some(x => x.id === s.id)
                               return (
-                                <div key={s.id} onClick={() => setSessionForm(f => ({ ...f, title: s.title, type: s.type }))}
+                                <div key={s.id} onClick={() => setSelectedSessions(prev =>
+                                  isSelected ? prev.filter(x => x.id !== s.id) : [...prev, s]
+                                )}
                                   style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8,
                                     border: `1px solid ${isSelected ? 'var(--auvo-border)' : 'var(--border)'}`,
                                     background: isSelected ? 'var(--auvo-dim)' : 'var(--surface2)', cursor: 'pointer' }}>
+                                  <input type="checkbox" checked={isSelected} readOnly
+                                    style={{ accentColor: 'var(--auvo)', flexShrink: 0, width: 13, height: 13 }} />
                                   <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 4, flexShrink: 0,
                                     background: s.type === 'treinamento' ? 'var(--auvo-dim)' : 'var(--green-dim)',
                                     color: s.type === 'treinamento' ? 'var(--auvo)' : 'var(--green)', fontWeight: 600 }}>
@@ -266,20 +288,19 @@ export default function Configuracoes({ activeTeam }) {
                                   <span style={{ fontSize: 10, color: 'var(--muted)', flexShrink: 0 }}>
                                     {s.type === 'treinamento' ? '📚' : '🎯'}
                                   </span>
-                                  {isSelected && <span style={{ fontSize: 12, color: 'var(--auvo)', flexShrink: 0 }}>✓</span>}
                                 </div>
                               )
                             })}
                           </div>
                         </div>
-                        {sessionForm.title && (
+                        {selectedSessions.length > 0 && (
                           <div className="form-group">
                             <label>Em qual dia do cronograma?</label>
                             <input type="number" min="1" max="30" value={sessionForm.day}
                               onChange={e => setSessionForm(f => ({ ...f, day: e.target.value }))}
                               placeholder="Ex: 22" style={{ width: 120 }} />
                             <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4 }}>
-                              Sessão selecionada: <strong>{sessionForm.title}</strong>
+                              {selectedSessions.length} sessão{selectedSessions.length > 1 ? 'ões selecionadas' : ' selecionada'} serão adicionadas neste dia
                             </div>
                           </div>
                         )}
@@ -319,7 +340,7 @@ export default function Configuracoes({ activeTeam }) {
                   </div>
                   <div className="modal-footer">
                     <button className="btn" onClick={() => setShowSessionForm(false)}>Cancelar</button>
-                    <button className="btn btn-primary" onClick={saveSession} disabled={savingSession || !sessionForm.title || !sessionForm.day}>
+                    <button className="btn btn-primary" onClick={saveSession} disabled={savingSession || (sessionMode === 'existing' ? selectedSessions.length === 0 || !sessionForm.day : !sessionForm.title || !sessionForm.day)}>
                       {savingSession ? 'Salvando...' : 'Adicionar sessão'}
                     </button>
                   </div>
