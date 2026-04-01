@@ -69,13 +69,22 @@ export default function Requalificacao({ activeTeam }) {
     let analystId = planForm.analyst_id || null
     // Se nome livre, cria um registro mínimo na tabela analysts
     if (analystMode === 'free' && planForm.analyst_name_free?.trim()) {
-      const { data: newA } = await supabase.from('analysts').insert({
+      // Gera token único para não violar constraint NOT NULL
+      const rqToken = 'rq_' + Math.random().toString(36).substring(2) + '_' + Date.now()
+      const { data: newA, error: anaError } = await supabase.from('analysts').insert({
         name: planForm.analyst_name_free,
         email: `rq_${Date.now()}@interno`,
         team: activeTeam,
         start_date: new Date().toISOString().split('T')[0],
         status: 'requalificacao',
+        access_token: rqToken,
       }).select().single()
+      if (anaError) {
+        console.error('Erro ao criar analista:', anaError)
+        alert('Erro ao criar analista: ' + anaError.message)
+        setSaving(false)
+        return
+      }
       analystId = newA?.id
     }
 
