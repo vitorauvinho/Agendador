@@ -10,7 +10,7 @@ export default function Onboarding({ activeTeam }) {
   const [showExit, setShowExit] = useState(false)
   const [showNote, setShowNote] = useState(null)
   const [filter, setFilter] = useState('todos')
-  const [form, setForm] = useState({ name: '', email: '', startDate: '', mode: 'all', picked: [], turmaMode: false, turmaIds: [] })
+  const [form, setForm] = useState({ name: '', email: '', startDate: '', mode: 'all', picked: [], turmaMode: false, turmaIds: [], turmaAnalysts: [] })
   const [exitForm, setExitForm] = useState({ reason: '', detail: '', date: '' })
   const [noteText, setNoteText] = useState('')
   const [saving, setSaving] = useState(false)
@@ -162,29 +162,73 @@ export default function Onboarding({ activeTeam }) {
   }
 
   async function addAnalyst() {
-    if (!form.name || !form.email || !form.startDate) return
-    setSaving(true)
     const sessionsToUse = form.mode === 'all'
       ? allSessions
       : allSessions.filter(s => form.picked.includes(s.id))
 
-    // Modo turma: cadastra múltiplos analistas com mesmas sessões
-    if (form.turmaMode && form.turmaIds.length > 0) {
-      for (const turmaId of form.turmaIds) {
-        const turmaAnalyst = analysts.find(a => a.id === turmaId)
-        if (!turmaAnalyst) continue
-        const { data: existingSessions } = await supabase
-          .from('sessions').select('id').eq('analyst_id', turmaId)
-        if (!existingSessions?.length) {
-          const rows = sessionsToUse.map(s => ({
-            analyst_id: turmaId, session_key: s.id,
-            day_number: s.day, type: s.type, title: s.title,
-          }))
-          await supabase.from('sessions').insert(rows)
-          await supabase.from('analyst_gamification').upsert({ analyst_id: turmaId }, { onConflict: 'analyst_id' })
-        }
+    setSaving(true)
+
+    // Modo turma: cadastra múltiplos analistas novos de uma vez
+    if (form.turmaMode) {
+      const allTurmaAnalysts = [
+        { name: form.name, email: form.email },
+        ...form.turmaAnalysts
+      ].filter(a => a.name && a.email)
+
+      if (allTurmaAnalysts.length === 0) { setSaving(false); return }
+
+      const createdAnalysts = []
+      for (const a of allTurmaAnalysts) {
+        const { data: newA, error } = await supabase
+          .from('analysts')
+          .insert({ name: a.name, email: a.email, team: activeTeam, start_date: form.startDate })
+          .select().single()
+        if (error || !newA) continue
+        createdAnalysts.push(newA)
+        const rows = sessionsToUse.map(s => ({
+          analyst_id: newA.id, session_key: s.id,
+          day_number: s.day, type: s.type, title: s.title,
+        }))
+        await supabase.from('sessions').insert(rows)
+        await supabase.from('analyst_gamification').insert({ analyst_id: newA.id })
+        await supabase.from('notifications').insert({
+          team: activeTeam, type: 'session_completed',
+          analyst_id: newA.id,
+          message: `Novo analista cadastrado: ${newA.name}`,
+        })
       }
+
+      // Webhook com todos os emails da turma
+      if (settings?.webhook_url && createdAnalysts.length > 0) {
+        setWebhookStatus('loading')
+        try {
+          await fetch(settings.webhook_url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              analystName: `Turma: ${createdAnalysts.map(a => a.name).join(', ')}`,
+              analystEmail: createdAnalysts[0].email,
+              turmaEmails: createdAnalysts.map(a => a.email),
+              myEmail: settings.my_email,
+              startDate: form.startDate,
+              sessions: sessionsToUse.map(s => ({ day: s.day, type: s.type, title: s.title, durationMinutes: 60 })),
+            }),
+          })
+          setWebhookStatus('success')
+        } catch { setWebhookStatus('error') }
+        setTimeout(() => setWebhookStatus(null), 5000)
+      }
+
+      setShowAdd(false)
+      setForm({ name: '', email: '', startDate: '', mode: 'all', picked: [], turmaMode: false, turmaIds: [], turmaAnalysts: [] })
+      setSaving(false)
+      await loadAnalysts()
+      if (createdAnalysts[0]) setSelectedId(createdAnalysts[0].id)
+      return
     }
+
+    // Modo individual
+    if (!form.name || !form.email || !form.startDate) { setSaving(false); return }
 
     const { data: analyst, error } = await supabase
       .from('analysts')
@@ -909,31 +953,39 @@ export default function Onboarding({ activeTeam }) {
 
               {/* Modo Turma */}
               <div className="form-group">
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 0 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 8 }}>
                   <input type="checkbox" checked={form.turmaMode}
-                    onChange={e => setForm(x => ({ ...x, turmaMode: e.target.checked, turmaIds: [] }))}
+                    onChange={e => setForm(x => ({ ...x, turmaMode: e.target.checked, turmaAnalysts: [] }))}
                     style={{ accentColor: 'var(--auvo)', width: 14, height: 14 }} />
-                  <span>👥 Adicionar a uma turma (compartilhar reuniões no Meet)</span>
+                  <span style={{ fontSize: 13, fontWeight: form.turmaMode ? 600 : 400, color: form.turmaMode ? 'var(--auvo)' : 'var(--text)' }}>
+                    👥 Cadastrar como turma
+                  </span>
                 </label>
                 {form.turmaMode && (
-                  <div style={{ marginTop: 10, maxHeight: 140, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <div style={{ fontSize: 11, color: 'var(--muted2)', marginBottom: 4 }}>
-                      Selecione os analistas que farão parte da mesma turma:
+                  <div style={{ background: 'var(--surface2)', borderRadius: 8, padding: 12, border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: 11, color: 'var(--muted2)', marginBottom: 10 }}>
+                      O analista acima + os que você adicionar abaixo entrarão nas mesmas sessões e reuniões:
                     </div>
-                    {analysts.filter(a => a.status === 'ativo').map(a => (
-                      <label key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6,
-                        border: `1px solid ${form.turmaIds.includes(a.id) ? 'var(--auvo-border)' : 'var(--border)'}`,
-                        background: form.turmaIds.includes(a.id) ? 'var(--auvo-dim)' : 'transparent', cursor: 'pointer', marginBottom: 0, fontSize: 11 }}>
-                        <input type="checkbox" checked={form.turmaIds.includes(a.id)}
-                          onChange={() => setForm(x => ({
-                            ...x, turmaIds: x.turmaIds.includes(a.id)
-                              ? x.turmaIds.filter(id => id !== a.id)
-                              : [...x.turmaIds, a.id]
-                          }))}
-                          style={{ accentColor: 'var(--auvo)', width: 13, height: 13 }} />
-                        {a.name}
-                      </label>
+                    {/* Lista de analistas da turma */}
+                    {form.turmaAnalysts.map((a, idx) => (
+                      <div key={idx} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
+                        <input value={a.name} onChange={e => setForm(x => ({ ...x, turmaAnalysts: x.turmaAnalysts.map((t,i) => i===idx ? {...t, name: e.target.value} : t) }))}
+                          placeholder="Nome" style={{ flex: 1, fontSize: 11 }} />
+                        <input value={a.email} onChange={e => setForm(x => ({ ...x, turmaAnalysts: x.turmaAnalysts.map((t,i) => i===idx ? {...t, email: e.target.value} : t) }))}
+                          placeholder="Email" type="email" style={{ flex: 1, fontSize: 11 }} />
+                        <button onClick={() => setForm(x => ({ ...x, turmaAnalysts: x.turmaAnalysts.filter((_,i) => i!==idx) }))}
+                          style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', fontSize: 16, padding: '0 4px', flexShrink: 0 }}>×</button>
+                      </div>
                     ))}
+                    <button className="btn btn-sm" style={{ fontSize: 11, marginTop: 4, width: '100%' }}
+                      onClick={() => setForm(x => ({ ...x, turmaAnalysts: [...x.turmaAnalysts, { name: '', email: '' }] }))}>
+                      + Adicionar analista à turma
+                    </button>
+                    {form.turmaAnalysts.length > 0 && (
+                      <div style={{ marginTop: 8, fontSize: 10, color: 'var(--green)' }}>
+                        ✓ {1 + form.turmaAnalysts.length} analistas serão cadastrados juntos
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -983,8 +1035,8 @@ export default function Onboarding({ activeTeam }) {
             </div>
             <div className="modal-footer">
               <button className="btn" onClick={() => setShowAdd(false)}>Cancelar</button>
-              <button className="btn btn-primary" onClick={addAnalyst} disabled={saving || (form.mode==='custom' && !form.picked.length)}>
-                {saving ? 'Cadastrando...' : `Cadastrar ${form.mode==='custom'?`(${form.picked.length})`:'(31 sessões)'}`}
+              <button className="btn btn-primary" onClick={addAnalyst} disabled={saving || (!form.turmaMode && (!form.name || !form.email || !form.startDate)) || (form.mode==='custom' && !form.turmaMode && !form.picked.length)}>
+                {saving ? 'Cadastrando...' : form.turmaMode ? `Cadastrar turma (${1 + form.turmaAnalysts.length} analistas)` : `Cadastrar ${form.mode==='custom'?`(${form.picked.length} sessões)`:'(todas as sessões)'}`}
               </button>
             </div>
           </div>
