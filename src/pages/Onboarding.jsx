@@ -164,7 +164,10 @@ export default function Onboarding({ activeTeam }) {
   async function addAnalyst() {
     const sessionsToUse = form.mode === 'all'
       ? allSessions
-      : allSessions.filter(s => form.picked.includes(s.id))
+      : allSessions.filter(s => {
+          const sid = String(s.id)
+          return form.picked.some(p => String(p) === sid)
+        })
 
     setSaving(true)
 
