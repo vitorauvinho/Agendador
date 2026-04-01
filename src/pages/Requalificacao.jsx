@@ -58,7 +58,7 @@ export default function Requalificacao({ activeTeam }) {
 
   async function savePlan() {
     console.log('savePlan called', { analystMode, planForm })
-    const hasAnalyst = analystMode === 'existing' ? !!planForm.analyst_id : !!planForm.analyst_name_free
+    const hasAnalyst = analystMode === 'existing' ? !!planForm.analyst_id : !!(planForm.analyst_name_free?.trim())
     console.log('hasAnalyst:', hasAnalyst, 'title:', planForm.title)
     if (!hasAnalyst || !planForm.title) {
       console.log('returning early - missing analyst or title')
@@ -66,9 +66,9 @@ export default function Requalificacao({ activeTeam }) {
     }
     setSaving(true)
 
-    let analystId = planForm.analyst_id
+    let analystId = planForm.analyst_id || null
     // Se nome livre, cria um registro mínimo na tabela analysts
-    if (analystMode === 'free' && planForm.analyst_name_free) {
+    if (analystMode === 'free' && planForm.analyst_name_free?.trim()) {
       const { data: newA } = await supabase.from('analysts').insert({
         name: planForm.analyst_name_free,
         email: `rq_${Date.now()}@interno`,
