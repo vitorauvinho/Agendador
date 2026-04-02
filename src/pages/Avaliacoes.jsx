@@ -257,7 +257,7 @@ Avalie APENAS esta resposta específica. Retorne SOMENTE um JSON válido no form
 
 
     // Chama via Edge Function — chave nunca exposta no frontend
-    const { data, error } = await supabase.functions.invoke('gemini-evaluate', {
+    const { data, error } = await supabase.functions.invoke('swift-function', {
       body: { prompt }
     })
 
