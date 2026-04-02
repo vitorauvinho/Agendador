@@ -265,7 +265,6 @@ Avalie APENAS esta resposta específica. Retorne SOMENTE um JSON válido no form
 
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
     const clean = text.replace(/```json|```/g, '').trim()
-    const clean = text.replace(/```json|```/g, '').trim()
     try {
       return JSON.parse(clean)
     } catch {
