@@ -9,15 +9,17 @@ const NAV_ITEMS = [
   { path: '/gamificacao',  icon: '🏆', label: 'Gamificação' },
 ]
 
+const NOTEBOOK_URL = 'https://notebooklm.google.com/notebook/14128fec-c0ef-452b-9fde-fd5fc63dfda4'
+
 export default function AnalistaLayout({ children, analystName, analystTeam }) {
   const { token } = useParams()
   const location = useLocation()
   const [logoUrl, setLogoUrl] = useState('')
   const [companyName, setCompanyName] = useState('Auvo')
+  const [showAssistant, setShowAssistant] = useState(false)
 
   useEffect(() => {
     async function loadSettings() {
-      // Se não temos o time ainda, busca pelo token
       let team = analystTeam
       if (!team && token) {
         const { data: a } = await supabase
@@ -25,13 +27,11 @@ export default function AnalistaLayout({ children, analystName, analystTeam }) {
         team = a?.team
       }
       if (!team) return
-
       const { data } = await supabase
         .from('team_settings')
         .select('logo_url, company_name')
         .eq('team', team)
         .single()
-
       if (data?.logo_url) setLogoUrl(data.logo_url)
       if (data?.company_name) setCompanyName(data.company_name)
     }
@@ -40,6 +40,8 @@ export default function AnalistaLayout({ children, analystName, analystTeam }) {
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg)' }}>
+
+      {/* Sidebar */}
       <aside style={{ width: 200, flexShrink: 0, background: 'var(--surface)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', padding: '18px 0' }}>
         <div style={{ padding: '0 16px 16px', borderBottom: '1px solid var(--border)', marginBottom: 14 }}>
           {logoUrl ? (
@@ -57,7 +59,7 @@ export default function AnalistaLayout({ children, analystName, analystTeam }) {
           </div>
         </div>
 
-        <div style={{ padding: '0 8px' }}>
+        <div style={{ padding: '0 8px', flex: 1 }}>
           <div style={{ fontSize: 8, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '0 8px', marginBottom: 6 }}>Menu</div>
           {NAV_ITEMS.map(item => {
             const fullPath = `/analista/${token}${item.path}`
@@ -73,8 +75,53 @@ export default function AnalistaLayout({ children, analystName, analystTeam }) {
             )
           })}
         </div>
+
+        {/* Botão assistente na sidebar */}
+        <div style={{ padding: '12px 8px 0', borderTop: '1px solid var(--border)', marginTop: 8 }}>
+          <button
+            onClick={() => window.open(NOTEBOOK_URL, '_blank')}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', borderRadius: 7, fontSize: 12, width: '100%', cursor: 'pointer', fontFamily: 'inherit', border: '1px solid var(--auvo-border)', background: 'var(--auvo-dim)', color: 'var(--auvo)', transition: 'all 0.15s' }}
+            onMouseEnter={e => e.currentTarget.style.background = 'rgba(109,38,194,0.15)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'var(--auvo-dim)'}
+          >
+            <span style={{ fontSize: 15 }}>🤖</span>
+            <span style={{ fontWeight: 600 }}>Assistente IA</span>
+          </button>
+        </div>
       </aside>
-      <main style={{ flex: 1, overflowY: 'auto' }}>{children}</main>
+
+      {/* Conteúdo principal */}
+      <main style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
+        {children}
+      </main>
+
+      {/* Botão flutuante */}
+      <button
+        onClick={() => window.open(NOTEBOOK_URL, '_blank')}
+        title="Abrir Assistente IA"
+        style={{
+          position: 'fixed',
+          bottom: 28,
+          right: 28,
+          width: 52,
+          height: 52,
+          borderRadius: '50%',
+          background: 'linear-gradient(135deg, var(--auvo), #9333ea)',
+          border: 'none',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 22,
+          boxShadow: '0 4px 20px rgba(109,38,194,0.45)',
+          transition: 'all 0.2s',
+          zIndex: 999,
+        }}
+        onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.1)'; e.currentTarget.style.boxShadow = '0 6px 28px rgba(109,38,194,0.6)' }}
+        onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(109,38,194,0.45)' }}
+      >
+        🤖
+      </button>
     </div>
   )
 }
