@@ -152,8 +152,20 @@ export default function MinhasTrilhas() {
               {playing && (
                 <div style={{ marginBottom: 20 }}>
                   {playing.type === 'youtube' && getYoutubeId(playing.url) ? (
-                    <iframe width="100%" height="400" src={`https://www.youtube.com/embed/${getYoutubeId(playing.url)}?autoplay=1`}
-                      frameBorder="0" allowFullScreen allow="autoplay" style={{ borderRadius: 12 }} title={playing.title} />
+                    <iframe width="100%" height="400"
+                      src={`https://www.youtube.com/embed/${getYoutubeId(playing.url)}?autoplay=1&enablejsapi=1&rel=0`}
+                      frameBorder="0" allowFullScreen allow="autoplay"
+                      style={{ borderRadius: 12 }} title={playing.title}
+                      onLoad={() => {
+                        // Auto-mark as watched after 30 seconds as fallback
+                        if (!progress[playing.id]?.watched) {
+                          setTimeout(() => markWatched(playing), 30000)
+                        }
+                      }} />
+                    <button className="btn btn-sm" style={{ marginTop: 8, fontSize: 11, color: 'var(--green)', width: '100%' }}
+                      onClick={() => { markWatched(playing); setPlaying(null) }}>
+                      ✓ Marcar como assistido e fechar
+                    </button>
                   ) : (
                     <div style={{ background: 'var(--surface2)', borderRadius: 12, padding: 20, textAlign: 'center' }}>
                       <div style={{ fontSize: 14, marginBottom: 12 }}>🎬 {playing.title}</div>
@@ -179,7 +191,7 @@ export default function MinhasTrilhas() {
                   const ytId = item.type === 'youtube' ? getYoutubeId(item.url) : null
                   return (
                     <div key={item.id}
-                      onClick={() => { setPlaying(item) }}
+                      onClick={() => setPlaying(playing?.id === item.id ? null : item)}
                       style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', border: `1px solid ${isPlaying ? 'var(--auvo-border)' : watched ? 'rgba(16,185,129,0.2)' : 'var(--border)'}`, borderRadius: 10, background: isPlaying ? 'var(--auvo-dim)' : watched ? 'rgba(16,185,129,0.04)' : 'var(--surface)', cursor: 'pointer', transition: 'all 0.15s' }}
                       onMouseEnter={e => { if (!isPlaying) e.currentTarget.style.borderColor = 'var(--border2)' }}
                       onMouseLeave={e => { if (!isPlaying) e.currentTarget.style.borderColor = watched ? 'rgba(16,185,129,0.2)' : 'var(--border)' }}
