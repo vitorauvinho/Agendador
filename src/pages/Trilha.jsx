@@ -22,6 +22,7 @@ export default function Trilha() {
   const [exerciseForms, setExerciseForms] = useState([])
   const [exerciseResponses, setExerciseResponses] = useState([])
   const [showingVideo, setShowingVideo] = useState(null)
+  const [confirmUncheck, setConfirmUncheck] = useState(null)
 
   // Rotas do enablement que não devem cair aqui
   const ENABLEMENT_ROUTES = ['exercicios','onboarding','biblioteca','revisoes','avaliacoes','gamificacao','trilhas','rh','configuracoes','requalificacao']
@@ -31,6 +32,12 @@ export default function Trilha() {
     if (!isEnablementRoute) loadAll()
     else setLoading(false)
   }, [token])
+
+  async function handleUncomplete(session) {
+    await supabase.from('sessions').update({ completed: false, completed_at: null }).eq('id', session.id)
+    setConfirmUncheck(null)
+    loadAll(true)
+  }
 
   async function handleComplete(session) {
     const hasEx = exerciseForms.some(ef => ef.session_keys?.includes(session.title))
@@ -296,13 +303,25 @@ export default function Trilha() {
                                   padding: '10px 12px', borderRadius: 9, fontSize: 12,
                                   border: `1px solid ${session.completed ? 'rgba(16,185,129,0.2)' : isNext ? 'var(--auvo-border)' : 'var(--border)'}`,
                                   background: session.completed ? 'rgba(16,185,129,0.04)' : isNext ? 'var(--auvo-dim)' : 'var(--surface)',
+                                  position: 'relative',
                                   cursor: 'pointer',
                                 }}
                                   onClick={() => setExpandedSession(isExpanded ? null : session.id)}
                                 >
                                   <div className="flex items-center gap-2">
-                                    <input type="checkbox" checked={session.completed} onChange={() => !session.completed && handleComplete(session)}
+                                    <input type="checkbox" checked={session.completed}
+                                      onChange={() => {
+                                        if (session.completed) setConfirmUncheck(session.id)
+                                        else handleComplete(session)
+                                      }}
                                       style={{ accentColor: 'var(--green)', flexShrink: 0, cursor: 'pointer' }} />
+                                    {confirmUncheck === session.id && (
+                                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8, boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
+                                        <span style={{ fontSize: 11, flex: 1 }}>Desfazer conclusão desta sessão?</span>
+                                        <button className="btn btn-danger btn-sm" style={{ fontSize: 10 }} onClick={() => handleUncomplete(session)}>Sim, desfazer</button>
+                                        <button className="btn btn-sm" style={{ fontSize: 10 }} onClick={() => setConfirmUncheck(null)}>Cancelar</button>
+                                      </div>
+                                    )}
                                     <span style={{ flex: 1, textDecoration: session.completed ? 'line-through' : 'none', color: session.completed ? 'var(--muted)' : isNext ? 'var(--auvo)' : 'var(--text)', fontWeight: isNext ? 600 : 400 }}>
                                       {session.title} {isNext && '← próxima'}
                                     </span>
