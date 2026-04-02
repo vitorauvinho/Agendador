@@ -13,12 +13,41 @@ export default function PainelRH({ activeTeam }) {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('todos')
   const [selected, setSelected] = useState(null)
+  const [pareceres, setPareceres] = useState({})
+  const [editingParecer, setEditingParecer] = useState(null)
+  const [parecerText, setParecerText] = useState('')
   const [snapData, setSnapData] = useState(null)
   const [snapLoading, setSnapLoading] = useState(false)
   const [finalComment, setFinalComment] = useState('')
   const [search, setSearch] = useState('')
 
   useEffect(() => { load() }, [activeTeam])
+
+  async function loadPareceres(analystId) {
+    const { data } = await supabase
+      .from('rh_pareceres')
+      .select('*')
+      .eq('analyst_id', analystId)
+      .order('milestone')
+    setPareceres(prev => ({
+      ...prev,
+      [analystId]: data || []
+    }))
+  }
+
+  async function saveParecer(analystId, milestone) {
+    if (!parecerText.trim()) return
+    await supabase.from('rh_pareceres').upsert({
+      analyst_id: analystId,
+      milestone,
+      text: parecerText,
+      created_at: new Date().toISOString(),
+      created_by: 'enablement'
+    }, { onConflict: 'analyst_id,milestone' })
+    setEditingParecer(null)
+    setParecerText('')
+    loadPareceres(analystId)
+  }
 
   async function load() {
     setLoading(true)
@@ -280,6 +309,49 @@ export default function PainelRH({ activeTeam }) {
                   </div>
                 </>
               )}
+            </div>
+
+            {/* Pareceres por tempo de casa */}
+            <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border)' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>📋 Pareceres obrigatórios</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                {[7, 15, 30, 45, 60, 90].map(days => {
+                  const startDate = selected?.start_date ? new Date(selected.start_date) : null
+                  const diasCasa = startDate ? Math.floor((new Date() - startDate) / (1000 * 60 * 60 * 24)) : 0
+                  const due = diasCasa >= days
+                  const parecer = (pareceres[selected?.id] || []).find(p => p.milestone === days)
+                  const isEditing = editingParecer === `${selected?.id}_${days}`
+                  return (
+                    <div key={days} style={{ padding: '10px 12px', borderRadius: 8, border: `1px solid ${parecer ? 'rgba(16,185,129,0.3)' : due ? 'rgba(239,68,68,0.3)' : 'var(--border)'}`,
+                      background: parecer ? 'rgba(16,185,129,0.05)' : due ? 'rgba(239,68,68,0.05)' : 'var(--surface2)' }}>
+                      <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: parecer ? 'var(--green)' : due ? 'var(--red)' : 'var(--muted)' }}>
+                          {days} dias {parecer ? '✓' : due ? '⚠' : '○'}
+                        </span>
+                        <button className="btn btn-sm" style={{ fontSize: 9, padding: '2px 6px' }}
+                          onClick={() => { setEditingParecer(`${selected?.id}_${days}`); setParecerText(parecer?.text || '') }}>
+                          {parecer ? '✏️' : '+ Add'}
+                        </button>
+                      </div>
+                      {isEditing ? (
+                        <div>
+                          <textarea value={parecerText} onChange={e => setParecerText(e.target.value)}
+                            style={{ width: '100%', minHeight: 50, fontSize: 10, resize: 'none', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 5, padding: '5px 7px', color: 'var(--text)', fontFamily: 'inherit' }}
+                            placeholder={`Parecer dos ${days} dias...`} autoFocus />
+                          <div className="flex gap-1" style={{ marginTop: 4 }}>
+                            <button className="btn btn-primary btn-sm" style={{ fontSize: 9 }} onClick={() => saveParecer(selected.id, days)}>✓</button>
+                            <button className="btn btn-sm" style={{ fontSize: 9 }} onClick={() => setEditingParecer(null)}>✕</button>
+                          </div>
+                        </div>
+                      ) : parecer ? (
+                        <div style={{ fontSize: 10, color: 'var(--muted2)', lineHeight: 1.4 }}>{parecer.text}</div>
+                      ) : (
+                        <div style={{ fontSize: 9, color: 'var(--muted)', fontStyle: 'italic' }}>{due ? 'Parecer pendente' : `Disponível em ${days - diasCasa}d`}</div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
 
             <div className="modal-footer">
