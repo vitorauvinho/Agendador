@@ -216,9 +216,13 @@ export default function Avaliacoes({ activeTeam }) {
           })
           current++
           setUploadProgress({ current, total: totalQuestions })
+          // Delay de 4s entre chamadas para respeitar limite de 15 req/min do Gemini gratuito
+          await new Promise(res => setTimeout(res, 4000))
         } catch (err) {
           console.error('Erro ao avaliar:', err)
           hasError = true
+          // Em caso de 429, espera 10s antes de continuar
+          await new Promise(res => setTimeout(res, 10000))
         }
       }
     }
@@ -660,7 +664,7 @@ Avalie APENAS esta resposta específica. Retorne SOMENTE um JSON válido no form
             {evaluating && uploadProgress.total > 0 && (
               <div style={{ padding: '0 20px 16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-                  <span style={{ fontSize: 11, color: 'var(--muted2)' }}>🤖 Avaliando respostas com IA...</span>
+                  <span style={{ fontSize: 11, color: 'var(--muted2)' }}>🤖 Avaliando com IA — pode levar alguns minutos...</span>
                   <span style={{ fontSize: 11, color: 'var(--auvo)', fontWeight: 600 }}>{uploadProgress.current}/{uploadProgress.total}</span>
                 </div>
                 <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 4, height: 6, overflow: 'hidden' }}>
