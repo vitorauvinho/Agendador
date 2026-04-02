@@ -67,6 +67,8 @@ export default function Avaliacoes({ activeTeam }) {
   const [csvData, setCsvData] = useState([])
   const [uploading, setUploading] = useState(false)
   const [evaluating, setEvaluating] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 })
   const fileInputRef = useRef()
 
   // Avaliação semanal
@@ -162,48 +164,75 @@ export default function Avaliacoes({ activeTeam }) {
   async function processAndEvaluate() {
     if (!csvData.length || !selectedExercise) return
     setEvaluating(true)
+    setUploadError('')
 
-    // Colunas a ignorar (não são perguntas)
     const skipCols = [
       'endereço de e-mail', 'email', 'e-mail',
       'carimbo de data/hora', 'timestamp', 'marca temporal',
       '_emailkey'
     ]
 
+    // Conta total de perguntas a avaliar
+    let totalQuestions = 0
+    const validRows = []
     for (const row of csvData) {
       const emailKey = row['_emailKey'] || 'Endereço de e-mail'
       const email = (row[emailKey] || '').toLowerCase()
       const analyst = analysts.find(a => a.email?.toLowerCase() === email)
       if (!analyst) continue
-
-      // Pega só as colunas de perguntas
-      const questions = Object.entries(row).filter(([k]) =>
-        !skipCols.includes(k.toLowerCase())
+      const questions = Object.entries(row).filter(([k, v]) =>
+        !skipCols.includes(k.toLowerCase()) && v && String(v).length >= 5
       )
+      if (questions.length) {
+        validRows.push({ analyst, questions })
+        totalQuestions += questions.length
+      }
+    }
 
+    if (validRows.length === 0) {
+      setUploadError('Nenhum analista encontrado no arquivo. Verifique se os e-mails do arquivo batem com os e-mails cadastrados no sistema.')
+      setEvaluating(false)
+      return
+    }
+
+    setUploadProgress({ current: 0, total: totalQuestions })
+    let current = 0
+    let hasError = false
+
+    for (const { analyst, questions } of validRows) {
       for (const [question, answer] of questions) {
-        if (!answer || answer.length < 5) continue
         try {
-          const aiResult = await evaluateWithGemini(question, answer, selectedExercise)
+          const aiResult = await evaluateWithGemini(question, String(answer), selectedExercise)
           await supabase.from('form_responses').insert({
             analyst_id: analyst.id,
             exercise_id: selectedExercise.id,
             question,
-            answer,
+            answer: String(answer),
             ai_score: aiResult.score,
             ai_feedback: aiResult.feedback,
             evaluated_at: new Date().toISOString(),
           })
+          current++
+          setUploadProgress({ current, total: totalQuestions })
         } catch (err) {
           console.error('Erro ao avaliar:', err)
+          hasError = true
         }
       }
     }
 
     setEvaluating(false)
-    setShowUpload(false)
-    setCsvData([])
-    setSelectedExercise(null)
+    setUploadProgress({ current: 0, total: 0 })
+
+    if (hasError) {
+      setUploadError('Algumas respostas não puderam ser avaliadas pela IA. As demais foram salvas normalmente.')
+    } else {
+      setShowUpload(false)
+      setCsvData([])
+      setSelectedExercise(null)
+      setUploadError('')
+    }
+
     if (selectedAnalyst) loadAnalystData(selectedAnalyst.id)
     loadAll()
   }
@@ -221,7 +250,7 @@ RESPOSTA DO ANALISTA: ${answer}
 Avalie APENAS esta resposta específica. Retorne SOMENTE um JSON válido no formato:
 {"score": <número de 0 a 10>, "feedback": "<feedback construtivo em português, máximo 3 frases>", "strengths": "<ponto forte específico>", "improvements": "<sugestão de melhoria específica>"}`
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -584,11 +613,36 @@ Avalie APENAS esta resposta específica. Retorne SOMENTE um JSON válido no form
                 </div>
               )}
             </div>
+            {/* Barra de progresso */}
+            {evaluating && uploadProgress.total > 0 && (
+              <div style={{ padding: '0 20px 16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                  <span style={{ fontSize: 11, color: 'var(--muted2)' }}>🤖 Avaliando respostas com IA...</span>
+                  <span style={{ fontSize: 11, color: 'var(--auvo)', fontWeight: 600 }}>{uploadProgress.current}/{uploadProgress.total}</span>
+                </div>
+                <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 4, height: 6, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', borderRadius: 4, background: 'var(--auvo)', width: `${Math.round(uploadProgress.current / uploadProgress.total * 100)}%`, transition: 'width 0.4s ease' }} />
+                </div>
+              </div>
+            )}
+
+            {/* Alerta de erro */}
+            {uploadError && (
+              <div style={{ margin: '0 20px 12px', padding: '10px 14px', background: 'var(--red-dim)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, fontSize: 11, color: 'var(--red)' }}>
+                ⚠️ {uploadError}
+              </div>
+            )}
+
             <div className="modal-footer">
-              <button className="btn" onClick={() => { setShowUpload(false); setCsvData([]) }}>Cancelar</button>
+              <button className="btn" onClick={() => { setShowUpload(false); setCsvData([]); setUploadError('') }}>Cancelar</button>
               <button className="btn btn-primary" onClick={processAndEvaluate}
-                disabled={evaluating || csvData.length === 0 || !selectedExercise} style={{ opacity: (csvData.length === 0 || !selectedExercise) ? 0.5 : 1 }}>
-                {evaluating ? '🤖 Avaliando...' : csvData.length === 0 ? '🔒 Selecione o CSV primeiro' : '🤖 Avaliar com IA'}
+                disabled={evaluating || csvData.length === 0 || !selectedExercise}
+                style={{ opacity: (csvData.length === 0 || !selectedExercise) ? 0.5 : 1 }}>
+                {evaluating
+                  ? `🤖 Avaliando ${uploadProgress.current}/${uploadProgress.total}...`
+                  : csvData.length === 0
+                    ? '🔒 Selecione o arquivo primeiro'
+                    : '🤖 Avaliar com IA'}
               </button>
             </div>
           </div>
