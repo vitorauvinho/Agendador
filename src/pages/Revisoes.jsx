@@ -6,6 +6,9 @@ export default function Revisoes({ activeTeam }) {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('todos')
   const [showReviewed, setShowReviewed] = useState(false)
+  const [givingFeedback, setGivingFeedback] = useState(null) // item id
+  const [feedbackText, setFeedbackText] = useState('')
+  const [feedbackGrade, setFeedbackGrade] = useState(null)
 
   useEffect(() => { loadReviews() }, [activeTeam, filter, showReviewed])
 
@@ -53,14 +56,23 @@ export default function Revisoes({ activeTeam }) {
     setLoading(false)
   }
 
-  async function markReviewed(item) {
+  async function markReviewed(item, grade = null, feedback = '') {
     if (item.kind === 'exercise') {
-      await supabase.from('exercise_responses').update({ reviewed: true, reviewed_at: new Date().toISOString(), reviewed_by: 'enablement' }).eq('id', item.id)
+      await supabase.from('exercise_responses').update({
+        reviewed: true, reviewed_at: new Date().toISOString(), reviewed_by: 'enablement',
+        grade, feedback
+      }).eq('id', item.id)
     } else if (item.kind === 'video') {
-      await supabase.from('video_submissions').update({ reviewed: true, reviewed_at: new Date().toISOString(), reviewed_by: 'enablement' }).eq('id', item.id)
+      await supabase.from('video_submissions').update({
+        reviewed: true, reviewed_at: new Date().toISOString(), reviewed_by: 'enablement',
+        grade, feedback
+      }).eq('id', item.id)
     } else if (item.kind === 'exit') {
       await supabase.from('notifications').update({ read: true }).eq('id', item.id)
     }
+    setGivingFeedback(null)
+    setFeedbackText('')
+    setFeedbackGrade(null)
     loadReviews()
   }
 
