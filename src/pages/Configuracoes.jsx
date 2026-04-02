@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase, TEAM_SESSIONS } from '../lib/supabase'
 
 export default function Configuracoes({ activeTeam }) {
-  const [form, setForm] = useState({ my_email: '', webhook_url: '', logo_url: '', company_name: 'Auvo', gemini_api_key: '' })
+  const [form, setForm] = useState({ my_email: '', webhook_url: '', logo_url: '', company_name: 'Auvo' })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -70,7 +70,6 @@ export default function Configuracoes({ activeTeam }) {
       webhook_url: data.webhook_url || '',
       logo_url: data.logo_url || '',
       company_name: data.company_name || 'Auvo',
-      gemini_api_key: data.gemini_api_key || '',
     })
     setLoading(false)
   }
@@ -325,29 +324,6 @@ export default function Configuracoes({ activeTeam }) {
               )}
             </div>
 
-            {/* ── Gemini API ── */}
-            <div className="card">
-              <div className="card-title">Gemini API (Avaliações por IA)</div>
-              <div style={{ fontSize: 12, color: 'var(--muted2)', marginBottom: 16, lineHeight: 1.7 }}>
-                Chave usada para avaliar automaticamente as respostas dos analistas com inteligência artificial.
-                Obtenha gratuitamente em <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" style={{ color: 'var(--auvo)' }}>aistudio.google.com</a>.
-              </div>
-              <div className="form-group">
-                <label>Chave da API do Gemini</label>
-                <input
-                  type="password"
-                  value={form.gemini_api_key}
-                  onChange={e => setForm(f => ({ ...f, gemini_api_key: e.target.value }))}
-                  placeholder="AIzaSy..."
-                  style={{ fontFamily: 'monospace', fontSize: 12 }}
-                />
-              </div>
-              {form.gemini_api_key && (
-                <div style={{ padding: '8px 12px', background: 'var(--green-dim)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 8, fontSize: 11, color: 'var(--green)' }}>
-                  ✓ Chave configurada
-                </div>
-              )}
-            </div>
 
             <button className="btn btn-primary" style={{ alignSelf: 'flex-start', padding: '10px 24px' }} onClick={save} disabled={saving}>
               {saving ? 'Salvando...' : saved ? '✓ Configuração salva!' : 'Salvar configurações'}
