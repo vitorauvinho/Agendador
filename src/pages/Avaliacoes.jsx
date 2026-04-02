@@ -1,184 +1,629 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
-const EMOJIS = ['😞', '😐', '😊', '😁', '🤩']
-const EMOJI_LABELS = ['', 'Ruim', 'Regular', 'Bom', 'Muito bom', 'Ótimo']
+const GEMINI_API_KEY = 'AIzaSyCRANqAkBFQg-lp4oT-mQJhqOF7POvkOcU'
+
+const PLAYBOOK_CONTEXT = `
+Você é um avaliador especialista em implantação de software SaaS (Auvo), avaliando analistas de CS e Implantação.
+
+HABILIDADES ESPERADAS DO ANALISTA (baseado no Playbook de Implantação Auvo 2026):
+
+1. COMPREENSÃO DE CENÁRIO DO CLIENTE: Capacidade de validar dores, processos e objetivos através de perguntas corretas de qualificação. O analista deve entender o processo atual do cliente, quem são os usuários técnicos, qual a principal dor que motivou a contratação e qual o objetivo principal a ser atingido com o Auvo.
+
+2. CONEXÃO DE VALOR: Habilidade técnica de conectar funcionalidades específicas do Auvo às dores levantadas pelo cliente durante o processo comercial. O analista deve identificar a funcionalidade principal que resolve a dor do cliente e demonstrar isso de forma prática.
+
+3. RAPPORT E CONEXÃO HUMANA: Capacidade de criar conexão genuína com o cliente, gerando confiança e engajamento. O analista deve ser empático, personalizar a abordagem e criar um ambiente de colaboração.
+
+4. ESTRUTURA DA REUNIÃO: Saber realizar treinamentos práticos seguindo a metodologia Auvo:
+   - ENTENDER: Compreender processo, dor e objetivo do cliente ANTES de ensinar
+   - DEMONSTRAR: Mostrar como o Auvo atende às expectativas conectando funcionalidades aos objetivos
+   - EXECUTAR: Criar tarefas REAIS para o cliente começar a usar imediatamente
+   
+5. REUNIÕES ESTRUTURADAS: O analista deve conseguir conduzir tanto treinamentos para gestores (Web/Service) quanto para técnicos de campo (App), garantindo que o cliente crie pelo menos 2 tarefas operacionais reais até D+5.
+
+CRITÉRIOS DE AVALIAÇÃO:
+- Nota de 0 a 10 por habilidade avaliada
+- Identificar pontos fortes específicos com exemplos da resposta
+- Identificar pontos de melhoria com sugestões práticas e acionáveis
+- Ser construtivo e encorajador, focado no desenvolvimento do analista
+`
+
+const WEEKLY_CRITERIA = {
+  1: [
+    { key: 'engajamento', label: 'Engajamento e Proatividade', desc: 'Participação ativa, iniciativa própria, pontualidade' },
+    { key: 'produto', label: 'Conhecimento do Produto', desc: 'Domínio básico do Auvo Service e App' },
+    { key: 'postura', label: 'Postura e Atitude', desc: 'Abertura para feedback, comprometimento, comunicação interna' },
+  ],
+  2: [
+    { key: 'cenario', label: 'Validação de Cenário', desc: 'Consegue entender o contexto, dor e objetivo do cliente com perguntas corretas' },
+    { key: 'conexao', label: 'Conexão Dor → Funcionalidade', desc: 'Conecta as dores do cliente às funcionalidades do Auvo de forma clara' },
+    { key: 'rapport', label: 'Rapport e Conexão Humana', desc: 'Cria conexão genuína, é empático e gera confiança no cliente' },
+    { key: 'estrutura', label: 'Estrutura da Reunião', desc: 'Segue a metodologia Entender → Demonstrar → Executar' },
+  ],
+  3: [
+    { key: 'carteira', label: 'Gestão de Carteira', desc: 'Organização, priorização e acompanhamento proativo dos clientes' },
+    { key: 'hubspot', label: 'Uso do HubSpot', desc: 'Registro correto de atividades, tickets e atualizações' },
+    { key: 'indicadores', label: 'Leitura de Indicadores', desc: 'Identifica riscos e gargalos de ativação pelos dados' },
+  ],
+  4: [
+    { key: 'autonomia', label: 'Autonomia no T1', desc: 'Consegue conduzir o primeiro treinamento sem apoio do enablement' },
+    { key: 'ativacao', label: 'Taxa de Ativação', desc: 'Resultados dos primeiros clientes reais — engajamento e uso' },
+    { key: 'autoconfianca', label: 'Autoconfiança e Postura', desc: 'Segurança na condução das reuniões e tomada de decisão' },
+  ],
+}
 
 export default function Avaliacoes({ activeTeam }) {
-  const [ratings, setRatings] = useState([])
-  const [enRatings, setEnRatings] = useState([])
-  const [exits, setExits] = useState([])
+  const [analysts, setAnalysts] = useState([])
+  const [selectedAnalyst, setSelectedAnalyst] = useState(null)
+  const [exercises, setExercises] = useState([])
+  const [formResponses, setFormResponses] = useState([])
+  const [weeklyEvals, setWeeklyEvals] = useState([])
   const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState('ia') // 'ia' | 'semanal'
 
-  useEffect(() => { load() }, [activeTeam])
+  // Upload CSV
+  const [showUpload, setShowUpload] = useState(false)
+  const [selectedExercise, setSelectedExercise] = useState(null)
+  const [csvData, setCsvData] = useState([])
+  const [uploading, setUploading] = useState(false)
+  const [evaluating, setEvaluating] = useState(false)
+  const fileInputRef = useRef()
 
-  async function load() {
+  // Avaliação semanal
+  const [showWeeklyForm, setShowWeeklyForm] = useState(false)
+  const [weeklyForm, setWeeklyForm] = useState({ week: 1, scores: {}, comment: '' })
+  const [savingWeekly, setSavingWeekly] = useState(false)
+
+  useEffect(() => { loadAll() }, [activeTeam])
+  useEffect(() => { if (selectedAnalyst) loadAnalystData(selectedAnalyst.id) }, [selectedAnalyst])
+
+  async function loadAll() {
     setLoading(true)
-    const { data: r } = await supabase
-      .from('session_ratings')
-      .select('*, sessions(title, day_number, type), analysts(name, team)')
-      .eq('analysts.team', activeTeam)
-      .order('created_at', { ascending: false })
-
-    const { data: er } = await supabase
-      .from('enablement_ratings')
-      .select('*, sessions(title, day_number), analysts(name, team)')
-      .eq('analysts.team', activeTeam)
-      .order('created_at', { ascending: false })
-
-    const { data: ex } = await supabase
-      .from('analysts')
-      .select('name, exit_reason, exit_date, team')
-      .in('status', ['desistiu', 'demitido'])
-      .eq('team', activeTeam)
-
-    setRatings((r || []).filter(x => x.analysts))
-    setEnRatings((er || []).filter(x => x.analysts))
-    setExits(ex || [])
+    const [{ data: ana }, { data: ex }] = await Promise.all([
+      supabase.from('analysts').select('*').eq('team', activeTeam).eq('status', 'ativo').order('name'),
+      supabase.from('exercise_forms').select('*').or(`team.eq.${activeTeam},team.eq.ambos`),
+    ])
+    setAnalysts(ana || [])
+    setExercises(ex || [])
     setLoading(false)
   }
 
-  const avgCsat = ratings.length
-    ? (ratings.reduce((s, r) => s + r.rating, 0) / ratings.length).toFixed(1)
-    : null
+  async function loadAnalystData(analystId) {
+    const [{ data: resp }, { data: weekly }] = await Promise.all([
+      supabase.from('form_responses').select('*').eq('analyst_id', analystId).order('created_at', { ascending: false }),
+      supabase.from('weekly_evaluations').select('*').eq('analyst_id', analystId).order('week'),
+    ])
+    setFormResponses(resp || [])
+    setWeeklyEvals(weekly || [])
+  }
 
-  const distribution = [1,2,3,4,5].map(score => ({
-    score,
-    count: ratings.filter(r => r.rating === score).length,
-    pct: ratings.length ? Math.round(ratings.filter(r => r.rating === score).length / ratings.length * 100) : 0
-  })).reverse()
+  // ── Alerta de avaliação pendente ─────────────────────────────────────────
+  function getWeeklyAlert(analyst) {
+    if (!analyst.start_date) return null
+    const start = new Date(analyst.start_date + 'T12:00:00Z')
+    const today = new Date()
+    const diffDays = Math.floor((today - start) / (1000 * 60 * 60 * 24))
+    const weeksDue = Math.min(Math.floor(diffDays / 7) + 1, 4)
+    // Verifica quais semanas já foram avaliadas
+    const { data: evals } = { data: weeklyEvals.filter(e => e.analyst_id === analyst.id) }
+    const evaluated = (evals || []).map(e => e.week)
+    for (let w = 1; w <= weeksDue; w++) {
+      if (!evaluated.includes(w)) return w
+    }
+    return null
+  }
 
-  // Sessões com pior CSAT
-  const sessionAvgs = {}
-  ratings.forEach(r => {
-    const key = r.sessions?.title
-    if (!key) return
-    if (!sessionAvgs[key]) sessionAvgs[key] = { title: key, sum: 0, count: 0 }
-    sessionAvgs[key].sum += r.rating
-    sessionAvgs[key].count++
-  })
-  const worstSessions = Object.values(sessionAvgs)
-    .map(s => ({ ...s, avg: s.sum / s.count }))
-    .filter(s => s.avg < 3.5)
-    .sort((a, b) => a.avg - b.avg)
-    .slice(0, 3)
+  // ── Upload e parse de CSV ─────────────────────────────────────────────────
+  function handleCSVUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const text = ev.target.result
+      const lines = text.split('\n').filter(l => l.trim())
+      const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim())
+      const rows = lines.slice(1).map(line => {
+        const vals = line.match(/(".*?"|[^,]+)/g) || []
+        const obj = {}
+        headers.forEach((h, i) => { obj[h] = (vals[i] || '').replace(/"/g, '').trim() })
+        return obj
+      }).filter(r => r['Email'] || r['email'] || r['E-mail'])
+      setCsvData(rows)
+    }
+    reader.readAsText(file)
+  }
 
-  // Exit analysis
-  const exitReasons = {}
-  exits.forEach(e => {
-    const r = e.exit_reason || 'Outro'
-    exitReasons[r] = (exitReasons[r] || 0) + 1
+  async function processAndEvaluate() {
+    if (!csvData.length || !selectedExercise) return
+    setEvaluating(true)
+
+    for (const row of csvData) {
+      const email = row['Email'] || row['email'] || row['E-mail'] || ''
+      const analyst = analysts.find(a => a.email?.toLowerCase() === email.toLowerCase())
+      if (!analyst) continue
+
+      // Pega as perguntas (todas as colunas exceto email e timestamp)
+      const skipCols = ['email', 'e-mail', 'carimbo de data/hora', 'timestamp', 'marca temporal']
+      const questions = Object.entries(row).filter(([k]) => !skipCols.includes(k.toLowerCase()))
+
+      // Avalia cada resposta individualmente com Gemini
+      for (const [question, answer] of questions) {
+        if (!answer) continue
+        try {
+          const aiResult = await evaluateWithGemini(question, answer, selectedExercise)
+          await supabase.from('form_responses').insert({
+            analyst_id: analyst.id,
+            exercise_id: selectedExercise.id,
+            question,
+            answer,
+            ai_score: aiResult.score,
+            ai_feedback: aiResult.feedback,
+            evaluated_at: new Date().toISOString(),
+          })
+        } catch (err) {
+          console.error('Erro ao avaliar:', err)
+        }
+      }
+    }
+
+    setEvaluating(false)
+    setShowUpload(false)
+    setCsvData([])
+    setSelectedExercise(null)
+    if (selectedAnalyst) loadAnalystData(selectedAnalyst.id)
+    loadAll()
+  }
+
+  async function evaluateWithGemini(question, answer, exercise) {
+    const prompt = `${PLAYBOOK_CONTEXT}
+
+EXERCÍCIO: ${exercise.title}
+${exercise.description ? `DESCRIÇÃO: ${exercise.description}` : ''}
+
+PERGUNTA AVALIADA: ${question}
+
+RESPOSTA DO ANALISTA: ${answer}
+
+Avalie APENAS esta resposta específica. Retorne SOMENTE um JSON válido no formato:
+{"score": <número de 0 a 10>, "feedback": "<feedback construtivo em português, máximo 3 frases>", "strengths": "<ponto forte específico>", "improvements": "<sugestão de melhoria específica>"}`
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.3, maxOutputTokens: 500 }
+      })
+    })
+    const data = await response.json()
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
+    const clean = text.replace(/```json|```/g, '').trim()
+    try {
+      return JSON.parse(clean)
+    } catch {
+      return { score: 0, feedback: 'Não foi possível avaliar automaticamente.', strengths: '', improvements: '' }
+    }
+  }
+
+  // ── Avaliação semanal ─────────────────────────────────────────────────────
+  async function saveWeeklyEval() {
+    if (!selectedAnalyst) return
+    setSavingWeekly(true)
+    const criteria = WEEKLY_CRITERIA[weeklyForm.week] || []
+    const scores = criteria.map(c => ({ key: c.key, label: c.label, score: weeklyForm.scores[c.key] || 0 }))
+    const avg = scores.reduce((s, c) => s + c.score, 0) / scores.length
+
+    await supabase.from('weekly_evaluations').upsert({
+      analyst_id: selectedAnalyst.id,
+      week: weeklyForm.week,
+      scores,
+      avg_score: Math.round(avg * 10) / 10,
+      comment: weeklyForm.comment,
+      evaluated_at: new Date().toISOString(),
+    }, { onConflict: 'analyst_id,week' })
+
+    setSavingWeekly(false)
+    setShowWeeklyForm(false)
+    setWeeklyForm({ week: 1, scores: {}, comment: '' })
+    loadAnalystData(selectedAnalyst.id)
+  }
+
+  // ── Helpers visuais ───────────────────────────────────────────────────────
+  function scoreColor(s) {
+    if (s >= 8) return 'var(--green)'
+    if (s >= 6) return 'var(--amber)'
+    return 'var(--red)'
+  }
+
+  function scoreEmoji(s) {
+    if (s >= 8) return '🟢'
+    if (s >= 6) return '🟡'
+    return '🔴'
+  }
+
+  // Alertas globais de avaliação pendente
+  const pendingAlerts = analysts.filter(a => {
+    const start = new Date(a.start_date + 'T12:00:00Z')
+    const diffDays = Math.floor((new Date() - start) / (1000 * 60 * 60 * 24))
+    const weeksDue = Math.min(Math.floor(diffDays / 7) + 1, 4)
+    const evaluated = weeklyEvals.filter(e => e.analyst_id === a.id).map(e => e.week)
+    for (let w = 1; w <= weeksDue; w++) {
+      if (!evaluated.includes(w)) return true
+    }
+    return false
   })
 
   return (
     <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '22px 24px' }}>
-      <div style={{ marginBottom: 18 }}>
+
+      {/* Header */}
+      <div style={{ marginBottom: 18, flexShrink: 0 }}>
         <div style={{ fontSize: 20, fontWeight: 700 }}>
-          Avaliações <span style={{ color: 'var(--auvo)' }}>& CSAT</span>
+          Avaliações <span style={{ color: 'var(--auvo)' }}>{activeTeam === 'atendimento' ? 'Atendimento' : 'Vendas'}</span>
         </div>
-        <div style={{ fontSize: 12, color: 'var(--muted2)', marginTop: 2 }}>Feedback dos analistas e avaliações do enablement</div>
+        <div style={{ fontSize: 12, color: 'var(--muted2)', marginTop: 2 }}>Avaliações por IA e avaliações semanais dos analistas</div>
       </div>
 
-      {loading ? (
-        <div className="flex items-center" style={{ justifyContent: 'center', flex: 1 }}><div className="spinner" /></div>
-      ) : (
-        <div style={{ flex: 1, overflowY: 'auto' }}>
-          <div className="grid-2" style={{ marginBottom: 14 }}>
-            {/* CSAT */}
-            <div className="card">
-              <div className="card-title">CSAT do onboarding</div>
-              <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--auvo)', marginBottom: 4 }}>
-                {avgCsat ? `${avgCsat} / 4` : '—'}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--muted2)', marginBottom: 14 }}>
-                {ratings.length} avaliação{ratings.length !== 1 ? 'ões' : ''}
-              </div>
-              {distribution.map(d => (
-                <div key={d.score} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <span style={{ fontSize: 16, width: 24 }}>{EMOJIS[d.score]}</span>
-                  <div style={{ flex: 1, background: 'rgba(255,255,255,0.05)', borderRadius: 4, height: 7, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', borderRadius: 4, width: `${d.pct}%`, background: d.score >= 3 ? 'var(--auvo)' : d.score === 2 ? 'var(--muted)' : 'var(--red)' }} />
+      {/* Alerta global de pendências */}
+      {pendingAlerts.length > 0 && (
+        <div style={{ padding: '10px 14px', background: 'var(--amber-dim)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 10, marginBottom: 16, fontSize: 12, color: 'var(--amber)', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <span style={{ fontSize: 16 }}>⚠️</span>
+          <span><strong>{pendingAlerts.length} analista{pendingAlerts.length > 1 ? 's' : ''}</strong> com avaliação semanal pendente: {pendingAlerts.map(a => a.name.split(' ')[0]).join(', ')}</span>
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 14, flex: 1, overflow: 'hidden' }}>
+
+        {/* Lista de analistas */}
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 12, overflowY: 'auto' }}>
+          <div style={{ fontSize: 9, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>Analistas ativos</div>
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}><div className="spinner" /></div>
+          ) : analysts.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 20, fontSize: 12, color: 'var(--muted)' }}>Nenhum analista ativo</div>
+          ) : analysts.map(a => {
+            const isSel = selectedAnalyst?.id === a.id
+            const start = new Date(a.start_date + 'T12:00:00Z')
+            const diffDays = Math.floor((new Date() - start) / (1000 * 60 * 60 * 24))
+            const weeksDue = Math.min(Math.floor(diffDays / 7) + 1, 4)
+            const evaluated = weeklyEvals.filter(e => e.analyst_id === a.id).map(e => e.week)
+            const hasPending = Array.from({ length: weeksDue }, (_, i) => i + 1).some(w => !evaluated.includes(w))
+
+            return (
+              <div key={a.id} onClick={() => setSelectedAnalyst(a)}
+                style={{ padding: '10px 11px', borderRadius: 8, cursor: 'pointer', marginBottom: 5, border: `1px solid ${isSel ? 'var(--auvo-border)' : 'var(--border)'}`, background: isSel ? 'var(--auvo-dim)' : 'var(--surface2)', transition: 'all 0.15s' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--auvo-dim)', color: 'var(--auvo)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 11, flexShrink: 0 }}>
+                    {a.name.charAt(0)}
                   </div>
-                  <span style={{ fontSize: 10, color: 'var(--muted2)', width: 28, textAlign: 'right' }}>{d.pct}%</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name.split(' ')[0]}</div>
+                    <div style={{ fontSize: 9, color: 'var(--muted2)' }}>Semana {Math.min(Math.ceil(diffDays / 7), 4)} do onboarding</div>
+                  </div>
+                  {hasPending && <span style={{ fontSize: 14 }} title="Avaliação semanal pendente">⚠️</span>}
                 </div>
-              ))}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Painel direito */}
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          {!selectedAnalyst ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', flexDirection: 'column', gap: 10, color: 'var(--muted)' }}>
+              <div style={{ fontSize: 36 }}>👈</div>
+              <div style={{ fontSize: 13 }}>Selecione um analista</div>
             </div>
-
-            {/* Saídas */}
-            <div className="card">
-              <div className="card-title">Motivos de saída</div>
-              {exits.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--muted)', fontSize: 12 }}>
-                  Nenhuma saída registrada
-                </div>
-              ) : (
-                <>
-                  {Object.entries(exitReasons).sort((a,b) => b[1]-a[1]).map(([reason, count]) => (
-                    <div key={reason} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: 'var(--red-dim)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 7, marginBottom: 6, fontSize: 11 }}>
-                      <span>{reason}</span>
-                      <span style={{ color: 'var(--red)', fontWeight: 600 }}>{count} — {Math.round(count/exits.length*100)}%</span>
-                    </div>
-                  ))}
-                  <div style={{ marginTop: 8, padding: 8, background: 'var(--amber-dim)', borderRadius: 7, fontSize: 10, color: 'var(--amber)' }}>
-                    ⚠ {exits.length} saída{exits.length > 1 ? 's' : ''} registrada{exits.length > 1 ? 's' : ''} no total
+          ) : (
+            <>
+              {/* Header do analista */}
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--auvo-dim)', border: '1px solid var(--auvo-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 16, color: 'var(--auvo)' }}>
+                    {selectedAnalyst.name.charAt(0)}
                   </div>
-                </>
-              )}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700 }}>{selectedAnalyst.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--muted2)' }}>{selectedAnalyst.role || selectedAnalyst.team}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-sm" style={{ fontSize: 10 }} onClick={() => setShowUpload(true)}>
+                      📤 Upload respostas
+                    </button>
+                    <button className="btn btn-primary btn-sm" style={{ fontSize: 10 }} onClick={() => {
+                      const start = new Date(selectedAnalyst.start_date + 'T12:00:00Z')
+                      const diffDays = Math.floor((new Date() - start) / (1000 * 60 * 60 * 24))
+                      const week = Math.min(Math.ceil(diffDays / 7) || 1, 4)
+                      setWeeklyForm({ week, scores: {}, comment: '' })
+                      setShowWeeklyForm(true)
+                    }}>
+                      📋 Avaliar semana
+                    </button>
+                  </div>
+                </div>
+              </div>
 
-              {worstSessions.length > 0 && (
-                <div style={{ marginTop: 14 }}>
-                  <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Sessões com baixa avaliação</div>
-                  {worstSessions.map(s => (
-                    <div key={s.title} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 7, marginBottom: 5 }}>
-                      <span style={{ fontSize: 16 }}>{EMOJIS[Math.round(s.avg)]}</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 11, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</div>
-                        <div style={{ fontSize: 9, color: 'var(--muted2)' }}>{s.count} avaliação{s.count > 1 ? 'ões' : ''}</div>
+              {/* Tabs */}
+              <div style={{ display: 'flex', gap: 4, padding: '12px 20px 0', flexShrink: 0 }}>
+                {[['ia', '🤖 Avaliações por IA'], ['semanal', '📊 Avaliações semanais']].map(([k, l]) => (
+                  <button key={k} onClick={() => setActiveTab(k)}
+                    style={{ padding: '7px 14px', borderRadius: '7px 7px 0 0', border: 'none', cursor: 'pointer', fontSize: 11, fontFamily: 'inherit', fontWeight: activeTab === k ? 600 : 400, background: activeTab === k ? 'var(--auvo)' : 'transparent', color: activeTab === k ? '#fff' : 'var(--muted2)' }}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+
+                {/* ── ABA: Avaliações por IA ── */}
+                {activeTab === 'ia' && (
+                  <div>
+                    {formResponses.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}>
+                        <div style={{ fontSize: 32, marginBottom: 10 }}>🤖</div>
+                        <div style={{ fontSize: 13, color: 'var(--muted2)', marginBottom: 14 }}>Nenhuma avaliação por IA ainda</div>
+                        <button className="btn btn-primary btn-sm" onClick={() => setShowUpload(true)}>📤 Fazer upload de respostas</button>
                       </div>
-                      <span style={{ fontSize: 12, color: 'var(--red)', fontWeight: 700 }}>{s.avg.toFixed(1)}</span>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        {/* Agrupa por exercício */}
+                        {Object.entries(
+                          formResponses.reduce((acc, r) => {
+                            const key = r.exercise_id || 'sem_exercicio'
+                            if (!acc[key]) acc[key] = []
+                            acc[key].push(r)
+                            return acc
+                          }, {})
+                        ).map(([exId, responses]) => {
+                          const ex = exercises.find(e => e.id === exId)
+                          const avgScore = responses.filter(r => r.ai_score).reduce((s, r) => s + r.ai_score, 0) / responses.filter(r => r.ai_score).length
+                          return (
+                            <div key={exId} style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+                              <div style={{ padding: '12px 14px', background: 'var(--surface2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <div>
+                                  <div style={{ fontSize: 13, fontWeight: 600 }}>{ex?.title || 'Exercício'}</div>
+                                  <div style={{ fontSize: 10, color: 'var(--muted2)', marginTop: 2 }}>
+                                    {new Date(responses[0].created_at).toLocaleDateString('pt-BR')} · {responses.length} perguntas avaliadas
+                                  </div>
+                                </div>
+                                {avgScore > 0 && (
+                                  <div style={{ textAlign: 'right' }}>
+                                    <div style={{ fontSize: 22, fontWeight: 700, color: scoreColor(avgScore) }}>{avgScore.toFixed(1)}</div>
+                                    <div style={{ fontSize: 9, color: 'var(--muted)' }}>média geral</div>
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                {responses.map((r, idx) => (
+                                  <div key={r.id || idx} style={{ padding: '10px 12px', background: 'var(--surface2)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
+                                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted2)', flex: 1 }}>{r.question}</div>
+                                      {r.ai_score > 0 && (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                                          <span>{scoreEmoji(r.ai_score)}</span>
+                                          <span style={{ fontSize: 14, fontWeight: 700, color: scoreColor(r.ai_score) }}>{r.ai_score}/10</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div style={{ fontSize: 11, color: 'var(--text)', marginBottom: 8, padding: '6px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 6, borderLeft: '2px solid var(--border)' }}>
+                                      {r.answer}
+                                    </div>
+                                    {r.ai_feedback && (
+                                      <div style={{ fontSize: 11, color: 'var(--muted2)', lineHeight: 1.6, padding: '6px 10px', background: 'var(--auvo-dim)', borderRadius: 6, borderLeft: '2px solid var(--auvo-border)' }}>
+                                        🤖 {r.ai_feedback}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ── ABA: Avaliações semanais ── */}
+                {activeTab === 'semanal' && (
+                  <div>
+                    {weeklyEvals.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}>
+                        <div style={{ fontSize: 32, marginBottom: 10 }}>📊</div>
+                        <div style={{ fontSize: 13, color: 'var(--muted2)', marginBottom: 14 }}>Nenhuma avaliação semanal ainda</div>
+                        <button className="btn btn-primary btn-sm" onClick={() => {
+                          setWeeklyForm({ week: 1, scores: {}, comment: '' })
+                          setShowWeeklyForm(true)
+                        }}>📋 Fazer primeira avaliação</button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        {[1, 2, 3, 4].map(week => {
+                          const eval_ = weeklyEvals.find(e => e.week === week)
+                          const criteria = WEEKLY_CRITERIA[week] || []
+                          return (
+                            <div key={week} style={{ border: `1px solid ${eval_ ? 'var(--border)' : 'rgba(255,255,255,0.05)'}`, borderRadius: 12, overflow: 'hidden', opacity: eval_ ? 1 : 0.5 }}>
+                              <div style={{ padding: '12px 14px', background: eval_ ? 'var(--surface2)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <div>
+                                  <div style={{ fontSize: 13, fontWeight: 600 }}>Semana {week}</div>
+                                  <div style={{ fontSize: 10, color: 'var(--muted2)', marginTop: 2 }}>
+                                    {eval_ ? `Avaliado em ${new Date(eval_.evaluated_at).toLocaleDateString('pt-BR')}` : 'Pendente'}
+                                  </div>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                  {eval_ && (
+                                    <div style={{ textAlign: 'right' }}>
+                                      <div style={{ fontSize: 20, fontWeight: 700, color: scoreColor(eval_.avg_score) }}>{eval_.avg_score}</div>
+                                      <div style={{ fontSize: 9, color: 'var(--muted)' }}>média</div>
+                                    </div>
+                                  )}
+                                  <button className="btn btn-sm" style={{ fontSize: 9 }} onClick={() => {
+                                    setWeeklyForm({ week, scores: eval_ ? Object.fromEntries((eval_.scores || []).map(s => [s.key, s.score])) : {}, comment: eval_?.comment || '' })
+                                    setShowWeeklyForm(true)
+                                  }}>
+                                    {eval_ ? '✏️ Editar' : '+ Avaliar'}
+                                  </button>
+                                </div>
+                              </div>
+                              {eval_ && (
+                                <div style={{ padding: '10px 14px' }}>
+                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 8, marginBottom: eval_.comment ? 10 : 0 }}>
+                                    {(eval_.scores || []).map(s => (
+                                      <div key={s.key} style={{ padding: '8px 10px', background: 'var(--surface2)', borderRadius: 7, border: '1px solid var(--border)' }}>
+                                        <div style={{ fontSize: 9, color: 'var(--muted2)', marginBottom: 4 }}>{s.label}</div>
+                                        <div style={{ fontSize: 16, fontWeight: 700, color: scoreColor(s.score) }}>{s.score}<span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 400 }}>/5</span></div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {eval_.comment && (
+                                    <div style={{ fontSize: 11, color: 'var(--muted2)', padding: '8px 10px', background: 'var(--surface2)', borderRadius: 7, borderLeft: '2px solid var(--auvo-border)', lineHeight: 1.6 }}>
+                                      💬 {eval_.comment}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ── MODAL: Upload CSV ── */}
+      {showUpload && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowUpload(false)}>
+          <div className="modal" style={{ width: 500 }}>
+            <div className="modal-header">
+              <div className="modal-title">Upload de respostas</div>
+              <button className="modal-close" onClick={() => { setShowUpload(false); setCsvData([]) }}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label>Exercício correspondente</label>
+                <select value={selectedExercise?.id || ''} onChange={e => setSelectedExercise(exercises.find(ex => ex.id === e.target.value) || null)} style={{ fontFamily: 'inherit', fontSize: 12 }}>
+                  <option value="">Selecionar exercício</option>
+                  {exercises.map(ex => <option key={ex.id} value={ex.id}>{ex.title}</option>)}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>Arquivo CSV (exportado do Google Forms)</label>
+                <div onClick={() => fileInputRef.current?.click()}
+                  style={{ border: '2px dashed var(--border2)', borderRadius: 10, padding: '20px', textAlign: 'center', cursor: 'pointer', background: 'var(--surface2)' }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--auvo)'}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border2)'}
+                >
+                  {csvData.length > 0 ? (
+                    <div>
+                      <div style={{ fontSize: 24, marginBottom: 6 }}>✅</div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--green)' }}>{csvData.length} resposta{csvData.length > 1 ? 's' : ''} carregada{csvData.length > 1 ? 's' : ''}</div>
+                      <div style={{ fontSize: 10, color: 'var(--muted2)', marginTop: 4 }}>
+                        Analistas identificados: {csvData.map(r => r['Email'] || r['email'] || r['E-mail']).filter(Boolean).join(', ')}
+                      </div>
                     </div>
-                  ))}
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 28, marginBottom: 8 }}>📄</div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted2)' }}>Clique para selecionar o CSV</div>
+                      <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4 }}>Exportado direto do Google Forms/Sheets</div>
+                    </>
+                  )}
+                </div>
+                <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleCSVUpload} />
+              </div>
+
+              {csvData.length > 0 && (
+                <div style={{ padding: '8px 12px', background: 'var(--auvo-dim)', border: '1px solid var(--auvo-border)', borderRadius: 8, fontSize: 11 }}>
+                  <div style={{ fontWeight: 600, color: 'var(--auvo)', marginBottom: 4 }}>O que vai acontecer:</div>
+                  <div style={{ color: 'var(--muted2)', lineHeight: 1.7 }}>
+                    • O Gemini vai avaliar cada resposta individualmente<br/>
+                    • Cada pergunta recebe uma nota de 0 a 10 + feedback<br/>
+                    • Analistas são identificados automaticamente pelo e-mail<br/>
+                    • Pode levar alguns segundos por resposta
+                  </div>
                 </div>
               )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => { setShowUpload(false); setCsvData([]) }}>Cancelar</button>
+              <button className="btn btn-primary" onClick={processAndEvaluate}
+                disabled={evaluating || !csvData.length || !selectedExercise}>
+                {evaluating ? '🤖 Avaliando com IA...' : '🤖 Avaliar com IA'}
+              </button>
             </div>
           </div>
+        </div>
+      )}
 
-          {/* History table */}
-          <div className="card">
-            <div className="card-title">Histórico de avaliações</div>
-            {ratings.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--muted)', fontSize: 12 }}>Nenhuma avaliação ainda</div>
-            ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-                  <thead>
-                    <tr>
-                      {['Analista','Sessão','CSAT','Comentário','Data'].map(h => (
-                        <th key={h} style={{ fontSize: 9, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '6px 10px', borderBottom: '1px solid var(--border)', textAlign: 'left', fontWeight: 500 }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {ratings.slice(0, 20).map(r => (
-                      <tr key={r.id}>
-                        <td style={{ padding: '9px 10px', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>{r.analysts?.name}</td>
-                        <td style={{ padding: '9px 10px', borderBottom: '1px solid var(--border)', color: 'var(--muted2)' }}>{r.sessions?.title}</td>
-                        <td style={{ padding: '9px 10px', borderBottom: '1px solid var(--border)' }}>
-                          <span style={{ fontSize: 16 }}>{EMOJIS[r.rating]}</span>
-                          <span style={{ fontSize: 10, color: 'var(--muted2)', marginLeft: 4 }}>{r.rating}/4</span>
-                        </td>
-                        <td style={{ padding: '9px 10px', borderBottom: '1px solid var(--border)', color: 'var(--muted2)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {r.comment || '—'}
-                        </td>
-                        <td style={{ padding: '9px 10px', borderBottom: '1px solid var(--border)', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
-                          {new Date(r.created_at).toLocaleDateString('pt-BR')}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+      {/* ── MODAL: Avaliação semanal ── */}
+      {showWeeklyForm && selectedAnalyst && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowWeeklyForm(false)}>
+          <div className="modal" style={{ width: 500 }}>
+            <div className="modal-header">
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--auvo)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>
+                  {selectedAnalyst.name.split(' ')[0]}
+                </div>
+                <div className="modal-title">Avaliação — Semana {weeklyForm.week}</div>
               </div>
-            )}
+              <button className="modal-close" onClick={() => setShowWeeklyForm(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              {/* Seletor de semana */}
+              <div className="form-group">
+                <label>Semana</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {[1, 2, 3, 4].map(w => (
+                    <button key={w} onClick={() => setWeeklyForm(f => ({ ...f, week: w, scores: {} }))}
+                      style={{ flex: 1, padding: '7px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit', fontSize: 11, border: `1px solid ${weeklyForm.week === w ? 'var(--auvo-border)' : 'var(--border)'}`, background: weeklyForm.week === w ? 'var(--auvo-dim)' : 'transparent', color: weeklyForm.week === w ? 'var(--auvo)' : 'var(--muted2)', fontWeight: weeklyForm.week === w ? 600 : 400 }}>
+                      Semana {w}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Critérios da semana selecionada */}
+              {(WEEKLY_CRITERIA[weeklyForm.week] || []).map(criterion => (
+                <div key={criterion.key} className="form-group">
+                  <label>{criterion.label}</label>
+                  <div style={{ fontSize: 10, color: 'var(--muted2)', marginBottom: 8 }}>{criterion.desc}</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {[1, 2, 3, 4, 5].map(score => {
+                      const selected = weeklyForm.scores[criterion.key] === score
+                      const colors = { 1: 'var(--red)', 2: '#f97316', 3: 'var(--amber)', 4: '#84cc16', 5: 'var(--green)' }
+                      const labels = { 1: 'Ruim', 2: 'Regular', 3: 'OK', 4: 'Bom', 5: 'Ótimo' }
+                      return (
+                        <button key={score} onClick={() => setWeeklyForm(f => ({ ...f, scores: { ...f.scores, [criterion.key]: score } }))}
+                          style={{ flex: 1, padding: '10px 4px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 10, border: `2px solid ${selected ? colors[score] : 'var(--border)'}`, background: selected ? `${colors[score]}22` : 'var(--surface2)', color: selected ? colors[score] : 'var(--muted)', fontWeight: selected ? 700 : 400, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                          <span style={{ fontSize: 16 }}>{score}</span>
+                          <span>{labels[score]}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+
+              <div className="form-group">
+                <label>Comentário geral (opcional)</label>
+                <textarea value={weeklyForm.comment} onChange={e => setWeeklyForm(f => ({ ...f, comment: e.target.value }))}
+                  placeholder="Observações, pontos de destaque ou plano de ação para o analista..."
+                  style={{ minHeight: 80, resize: 'none', fontSize: 12 }} />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => setShowWeeklyForm(false)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={saveWeeklyEval} disabled={savingWeekly ||
+                (WEEKLY_CRITERIA[weeklyForm.week] || []).some(c => !weeklyForm.scores[c.key])}>
+                {savingWeekly ? 'Salvando...' : 'Salvar avaliação'}
+              </button>
+            </div>
           </div>
         </div>
       )}
