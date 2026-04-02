@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
-const GEMINI_API_KEY = 'AIzaSyCRANqAkBFQg-lp4oT-mQJhqOF7POvkOcU'
-
 const PLAYBOOK_CONTEXT = `
 Você é um avaliador especialista em implantação de software SaaS (Auvo), avaliando analistas de CS e Implantação.
 
@@ -53,7 +51,9 @@ const WEEKLY_CRITERIA = {
 }
 
 export default function Avaliacoes({ activeTeam }) {
+  const [geminiKey, setGeminiKey] = useState('')
   const [analysts, setAnalysts] = useState([])
+
   const [selectedAnalyst, setSelectedAnalyst] = useState(null)
   const [exercises, setExercises] = useState([])
   const [formResponses, setFormResponses] = useState([])
@@ -83,12 +83,14 @@ export default function Avaliacoes({ activeTeam }) {
 
   async function loadAll() {
     setLoading(true)
-    const [{ data: ana }, { data: ex }] = await Promise.all([
+    const [{ data: ana }, { data: ex }, { data: settings }] = await Promise.all([
       supabase.from('analysts').select('*').eq('team', activeTeam).eq('status', 'ativo').order('name'),
       supabase.from('exercise_forms').select('*').or(`team.eq.${activeTeam},team.eq.ambos`),
+      supabase.from('team_settings').select('gemini_api_key').eq('team', activeTeam).single(),
     ])
     setAnalysts(ana || [])
     setExercises(ex || [])
+    if (settings?.gemini_api_key) setGeminiKey(settings.gemini_api_key)
     setLoading(false)
   }
 
@@ -165,6 +167,10 @@ export default function Avaliacoes({ activeTeam }) {
 
   async function processAndEvaluate() {
     if (!csvData.length || !selectedExercise) return
+    if (!geminiKey) {
+      setUploadError('Chave da API do Gemini não configurada. Vá em Configurações → Integrações e adicione sua chave.')
+      return
+    }
     setEvaluating(true)
     setUploadError('')
 
@@ -256,7 +262,7 @@ RESPOSTA DO ANALISTA: ${answer}
 Avalie APENAS esta resposta específica. Retorne SOMENTE um JSON válido no formato:
 {"score": <número de 0 a 10>, "feedback": "<feedback construtivo em português, máximo 3 frases>", "strengths": "<ponto forte específico>", "improvements": "<sugestão de melhoria específica>"}`
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
