@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import AnalistaLayout from '../components/AnalistaLayout.jsx'
 import { supabase } from '../lib/supabase'
@@ -6,6 +6,17 @@ import { supabase } from '../lib/supabase'
 function getYoutubeId(url) {
   const match = url?.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/)
   return match ? match[1] : null
+}
+
+// ── YouTube Player via iframe API ─────────────────────────────────────────
+// Carrega a API do YouTube uma vez na página
+let ytApiLoaded = false
+function loadYTApi() {
+  if (ytApiLoaded || window.YT) return
+  ytApiLoaded = true
+  const tag = document.createElement('script')
+  tag.src = 'https://www.youtube.com/iframe_api'
+  document.head.appendChild(tag)
 }
 
 export default function MinhasTrilhas() {
@@ -18,8 +29,91 @@ export default function MinhasTrilhas() {
   const [progress, setProgress] = useState({})
   const [playing, setPlaying] = useState(null)
 
+  // ── Opção C: controle de progresso do vídeo ──────────────────────────────
+  const [watchPct, setWatchPct] = useState(0)       // % assistido (0–100)
+  const [canMark, setCanMark] = useState(false)      // libera o botão
+  const playerRef = useRef(null)                     // instância do YT.Player
+  const intervalRef = useRef(null)                   // setInterval de tracking
+  const iframeId = 'yt-player-frame'
+
   useEffect(() => { loadAll() }, [token])
   useEffect(() => { if (selected) loadItems(selected.id) }, [selected])
+
+  // Quando troca de vídeo, reseta progresso e destrói player anterior
+  useEffect(() => {
+    setWatchPct(0)
+    setCanMark(false)
+    clearInterval(intervalRef.current)
+    if (playerRef.current) {
+      try { playerRef.current.destroy() } catch (_) {}
+      playerRef.current = null
+    }
+  }, [playing?.id])
+
+  // Inicia o rastreamento quando um vídeo do YouTube começa a tocar
+  useEffect(() => {
+    if (!playing || playing.type !== 'youtube') return
+    const ytId = getYoutubeId(playing.url)
+    if (!ytId) return
+
+    loadYTApi()
+
+    // Aguarda a API estar pronta e o iframe renderizado
+    const init = () => {
+      if (!window.YT || !window.YT.Player) {
+        setTimeout(init, 300)
+        return
+      }
+      // Pequeno delay para o iframe existir no DOM
+      setTimeout(() => {
+        try {
+          playerRef.current = new window.YT.Player(iframeId, {
+            events: {
+              onReady: () => startTracking(),
+              onStateChange: (e) => {
+                // YT.PlayerState.PLAYING = 1
+                if (e.data === 1) startTracking()
+                else stopTracking()
+              }
+            }
+          })
+        } catch (_) {}
+      }, 500)
+    }
+
+    if (window.YT && window.YT.Player) {
+      init()
+    } else {
+      window.onYouTubeIframeAPIReady = init
+    }
+
+    return () => stopTracking()
+  }, [playing?.id])
+
+  function startTracking() {
+    stopTracking()
+    intervalRef.current = setInterval(() => {
+      try {
+        const player = playerRef.current
+        if (!player) return
+        const current = player.getCurrentTime()
+        const total = player.getDuration()
+        if (!total || total === 0) return
+        const pct = Math.round((current / total) * 100)
+        setWatchPct(pct)
+        if (pct >= 90) {
+          setCanMark(true)
+          stopTracking() // para de checar depois que liberou
+        }
+      } catch (_) {}
+    }, 3000)
+  }
+
+  function stopTracking() {
+    clearInterval(intervalRef.current)
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
 
   async function loadAll() {
     const { data: a } = await supabase.from('analysts').select('*').eq('access_token', token).single()
@@ -27,8 +121,7 @@ export default function MinhasTrilhas() {
     setAnalyst(a)
     const { data: t } = await supabase.from('video_trails').select('*, video_trail_items(id)')
       .or(`team.eq.${a.team},team.eq.ambos`).order('order_index')
-    const { data: prog } = await supabase.from('video_trail_progress')
-      .select('*').eq('analyst_id', a.id)
+    const { data: prog } = await supabase.from('video_trail_progress').select('*').eq('analyst_id', a.id)
     const progMap = {}
     ;(prog || []).forEach(p => { progMap[p.item_id] = p })
     setProgress(progMap)
@@ -49,6 +142,9 @@ export default function MinhasTrilhas() {
       { onConflict: 'analyst_id,item_id' }
     )
     setProgress(p => ({ ...p, [item.id]: { watched: true } }))
+    setPlaying(null)
+    setWatchPct(0)
+    setCanMark(false)
   }
 
   function trailProgress(trail) {
@@ -142,33 +238,53 @@ export default function MinhasTrilhas() {
                 })()}
               </div>
 
-              {/* Video player */}
+              {/* ── Video player com Opção C ── */}
               {playing && (
                 <div style={{ marginBottom: 20, borderRadius: 12, overflow: 'hidden', border: '1px solid var(--auvo-border)' }}>
                   <div style={{ background: 'var(--auvo-dim)', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--auvo)' }}>▶ {playing.title}</span>
-                    <button onClick={() => setPlaying(null)} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                    <button onClick={() => { setPlaying(null); stopTracking() }} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 16 }}>✕</button>
                   </div>
+
                   {playing.type === 'youtube' && getYoutubeId(playing.url) ? (
                     <div>
                       <iframe
+                        id={iframeId}
                         width="100%"
                         height="400"
-                        src={`https://www.youtube.com/embed/${getYoutubeId(playing.url)}?autoplay=1&enablejsapi=1&rel=0`}
+                        src={`https://www.youtube.com/embed/${getYoutubeId(playing.url)}?autoplay=1&enablejsapi=1&rel=0&origin=${encodeURIComponent(window.location.origin)}`}
                         frameBorder="0"
                         allowFullScreen
                         allow="autoplay"
                         style={{ display: 'block', borderRadius: 0 }}
                         title={playing.title}
                       />
-                      <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--surface2)' }}>
-                        {!progress[playing.id]?.watched ? (
+
+                      {/* Barra de progresso do vídeo */}
+                      <div style={{ padding: '8px 14px 0', background: 'var(--surface2)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+                          <span style={{ fontSize: 9, color: 'var(--muted2)' }}>
+                            {canMark ? '✓ Vídeo quase completo — pode marcar como assistido!' : `Assista pelo menos 90% para liberar · ${watchPct}% assistido`}
+                          </span>
+                          <span style={{ fontSize: 9, fontWeight: 600, color: canMark ? 'var(--green)' : 'var(--auvo)' }}>{watchPct}%</span>
+                        </div>
+                        <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 4, height: 4, overflow: 'hidden', marginBottom: 10 }}>
+                          <div style={{ height: '100%', borderRadius: 4, background: canMark ? 'var(--green)' : 'var(--auvo)', width: `${watchPct}%`, transition: 'width 1s ease' }} />
+                        </div>
+                      </div>
+
+                      <div style={{ padding: '0 14px 10px', background: 'var(--surface2)' }}>
+                        {progress[playing.id]?.watched ? (
+                          <span style={{ fontSize: 11, color: 'var(--green)', fontWeight: 600 }}>✓ Já assistido</span>
+                        ) : canMark ? (
                           <button className="btn btn-primary btn-sm" style={{ fontSize: 11, width: '100%' }}
-                            onClick={() => { markWatched(playing); setPlaying(null) }}>
+                            onClick={() => markWatched(playing)}>
                             ✓ Marcar como assistido e fechar
                           </button>
                         ) : (
-                          <span style={{ fontSize: 11, color: 'var(--green)', fontWeight: 600 }}>✓ Assistido</span>
+                          <button className="btn btn-sm" style={{ fontSize: 11, width: '100%', opacity: 0.5, cursor: 'not-allowed' }} disabled>
+                            🔒 Assista {90 - watchPct}% mais para liberar
+                          </button>
                         )}
                       </div>
                     </div>
@@ -213,6 +329,8 @@ export default function MinhasTrilhas() {
                       </div>
                       {watched ? (
                         <span style={{ fontSize: 16, flexShrink: 0 }}>✅</span>
+                      ) : isPlaying && watchPct > 0 ? (
+                        <span style={{ fontSize: 10, color: 'var(--auvo)', flexShrink: 0, fontWeight: 600 }}>{watchPct}%</span>
                       ) : (
                         <span style={{ fontSize: 20, flexShrink: 0, color: 'var(--auvo)' }}>▶</span>
                       )}
