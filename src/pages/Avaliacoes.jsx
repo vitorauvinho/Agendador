@@ -114,64 +114,49 @@ export default function Avaliacoes({ activeTeam }) {
   }
 
   // ── Upload e parse de CSV ─────────────────────────────────────────────────
-  function parseCSVLine(line) {
-    const result = []
-    let current = ''
-    let inQuotes = false
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i]
-      if (ch === '"') {
-        inQuotes = !inQuotes
-      } else if (ch === ',' && !inQuotes) {
-        result.push(current.trim())
-        current = ''
-      } else {
-        current += ch
-      }
-    }
-    result.push(current.trim())
-    return result
-  }
-
-  function handleCSVUpload(e) {
+  function handleFileUpload(e) {
     const file = e.target.files?.[0]
     if (!file) return
+
     const reader = new FileReader()
     reader.onload = (ev) => {
-      const text = ev.target.result
-      const lines = text.split('\n').filter(l => l.trim())
-      if (lines.length < 2) return
+      try {
+        const XLSX = window.XLSX
+        if (!XLSX) { alert('Biblioteca não carregada. Recarregue a página.'); return }
 
-      const headers = parseCSVLine(lines[0]).map(h => h.replace(/^"|"$/g, '').trim())
+        const data = new Uint8Array(ev.target.result)
+        const workbook = XLSX.read(data, { type: 'array' })
+        const sheetName = workbook.SheetNames[0]
+        const sheet = workbook.Sheets[sheetName]
+        const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' })
 
-      // Encontra coluna de email — aceita "Endereço de e-mail", "Email", "email", etc.
-      const emailIdx = headers.findIndex(h =>
-        h.toLowerCase().includes('e-mail') ||
-        h.toLowerCase() === 'email' ||
-        h.toLowerCase().includes('endereço')
-      )
+        if (!rows.length) { alert('Planilha vazia ou sem dados.'); return }
 
-      if (emailIdx === -1) {
-        alert('Coluna de e-mail não encontrada no CSV.\nVerifique se o Google Forms está configurado para coletar endereços de e-mail.')
-        return
+        const headers = Object.keys(rows[0])
+        const emailKey = headers.find(h =>
+          h.toLowerCase().includes('e-mail') ||
+          h.toLowerCase() === 'email' ||
+          h.toLowerCase().includes('endere')
+        )
+
+        if (!emailKey) {
+          alert('Coluna de e-mail não encontrada.\nVerifique se o Google Forms está configurado para coletar endereços de e-mail.')
+          return
+        }
+
+        const valid = rows
+          .map(r => ({ ...r, _emailKey: emailKey }))
+          .filter(r => String(r[emailKey] || '').includes('@'))
+
+        if (!valid.length) { alert('Nenhuma linha com e-mail válido encontrada.'); return }
+
+        setCsvData(valid)
+      } catch (err) {
+        console.error('Erro ao ler arquivo:', err)
+        alert('Erro ao ler o arquivo. Use .xlsx exportado do Google Sheets.')
       }
-
-      const rows = lines.slice(1).map(line => {
-        const vals = parseCSVLine(line)
-        const obj = {}
-        headers.forEach((h, i) => {
-          obj[h] = (vals[i] || '').replace(/^"|"$/g, '').trim()
-        })
-        obj['_emailKey'] = headers[emailIdx] // guarda qual coluna é o email
-        return obj
-      }).filter(r => {
-        const email = r[headers[emailIdx]]
-        return email && email.includes('@')
-      })
-
-      setCsvData(rows)
     }
-    reader.readAsText(file, 'UTF-8')
+    reader.readAsArrayBuffer(file)
   }
 
   async function processAndEvaluate() {
@@ -562,7 +547,7 @@ Avalie APENAS esta resposta específica. Retorne SOMENTE um JSON válido no form
               </div>
 
               <div className="form-group">
-                <label>Arquivo CSV (exportado do Google Forms)</label>
+                <label>Planilha de respostas (.xlsx ou .csv)</label>
                 <div onClick={() => fileInputRef.current?.click()}
                   style={{ border: '2px dashed var(--border2)', borderRadius: 10, padding: '20px', textAlign: 'center', cursor: 'pointer', background: 'var(--surface2)' }}
                   onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--auvo)'}
@@ -579,12 +564,12 @@ Avalie APENAS esta resposta específica. Retorne SOMENTE um JSON válido no form
                   ) : (
                     <>
                       <div style={{ fontSize: 28, marginBottom: 8 }}>📄</div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted2)' }}>Clique para selecionar o CSV</div>
-                      <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4 }}>Exportado direto do Google Forms/Sheets</div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted2)' }}>Clique para selecionar o arquivo</div>
+                      <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4 }}>.xlsx exportado do Google Sheets · também aceita .csv</div>
                     </>
                   )}
                 </div>
-                <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleCSVUpload} />
+                <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={handleFileUpload} />
               </div>
 
               {csvData.length > 0 && (
