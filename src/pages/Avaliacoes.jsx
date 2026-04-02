@@ -263,10 +263,12 @@ Avalie APENAS esta resposta específica. Retorne SOMENTE um JSON válido no form
 
     if (error) throw new Error(error.message)
 
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
-    const clean = text.replace(/```json|```/g, '').trim()
+    // Edge Function já retorna o texto limpo em data.text
+    const clean = data?.text || '{}'
     try {
-      return JSON.parse(clean)
+      const parsed = JSON.parse(clean)
+      if (!parsed.score && parsed.score !== 0) throw new Error('Invalid')
+      return parsed
     } catch {
       return { score: 0, feedback: 'Não foi possível avaliar automaticamente.', strengths: '', improvements: '' }
     }
