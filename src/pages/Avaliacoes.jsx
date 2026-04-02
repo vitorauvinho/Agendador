@@ -114,6 +114,25 @@ export default function Avaliacoes({ activeTeam }) {
   }
 
   // ── Upload e parse de CSV ─────────────────────────────────────────────────
+  function parseCSVLine(line) {
+    const result = []
+    let current = ''
+    let inQuotes = false
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i]
+      if (ch === '"') {
+        inQuotes = !inQuotes
+      } else if (ch === ',' && !inQuotes) {
+        result.push(current.trim())
+        current = ''
+      } else {
+        current += ch
+      }
+    }
+    result.push(current.trim())
+    return result
+  }
+
   function handleCSVUpload(e) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -121,34 +140,64 @@ export default function Avaliacoes({ activeTeam }) {
     reader.onload = (ev) => {
       const text = ev.target.result
       const lines = text.split('\n').filter(l => l.trim())
-      const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim())
+      if (lines.length < 2) return
+
+      const headers = parseCSVLine(lines[0]).map(h => h.replace(/^"|"$/g, '').trim())
+
+      // Encontra coluna de email — aceita "Endereço de e-mail", "Email", "email", etc.
+      const emailIdx = headers.findIndex(h =>
+        h.toLowerCase().includes('e-mail') ||
+        h.toLowerCase() === 'email' ||
+        h.toLowerCase().includes('endereço')
+      )
+
+      if (emailIdx === -1) {
+        alert('Coluna de e-mail não encontrada no CSV.\nVerifique se o Google Forms está configurado para coletar endereços de e-mail.')
+        return
+      }
+
       const rows = lines.slice(1).map(line => {
-        const vals = line.match(/(".*?"|[^,]+)/g) || []
+        const vals = parseCSVLine(line)
         const obj = {}
-        headers.forEach((h, i) => { obj[h] = (vals[i] || '').replace(/"/g, '').trim() })
+        headers.forEach((h, i) => {
+          obj[h] = (vals[i] || '').replace(/^"|"$/g, '').trim()
+        })
+        obj['_emailKey'] = headers[emailIdx] // guarda qual coluna é o email
         return obj
-      }).filter(r => r['Email'] || r['email'] || r['E-mail'])
+      }).filter(r => {
+        const email = r[headers[emailIdx]]
+        return email && email.includes('@')
+      })
+
       setCsvData(rows)
     }
-    reader.readAsText(file)
+    reader.readAsText(file, 'UTF-8')
   }
 
   async function processAndEvaluate() {
     if (!csvData.length || !selectedExercise) return
     setEvaluating(true)
 
+    // Colunas a ignorar (não são perguntas)
+    const skipCols = [
+      'endereço de e-mail', 'email', 'e-mail',
+      'carimbo de data/hora', 'timestamp', 'marca temporal',
+      '_emailkey'
+    ]
+
     for (const row of csvData) {
-      const email = row['Email'] || row['email'] || row['E-mail'] || ''
-      const analyst = analysts.find(a => a.email?.toLowerCase() === email.toLowerCase())
+      const emailKey = row['_emailKey'] || 'Endereço de e-mail'
+      const email = (row[emailKey] || '').toLowerCase()
+      const analyst = analysts.find(a => a.email?.toLowerCase() === email)
       if (!analyst) continue
 
-      // Pega as perguntas (todas as colunas exceto email e timestamp)
-      const skipCols = ['email', 'e-mail', 'carimbo de data/hora', 'timestamp', 'marca temporal']
-      const questions = Object.entries(row).filter(([k]) => !skipCols.includes(k.toLowerCase()))
+      // Pega só as colunas de perguntas
+      const questions = Object.entries(row).filter(([k]) =>
+        !skipCols.includes(k.toLowerCase())
+      )
 
-      // Avalia cada resposta individualmente com Gemini
       for (const [question, answer] of questions) {
-        if (!answer) continue
+        if (!answer || answer.length < 5) continue
         try {
           const aiResult = await evaluateWithGemini(question, answer, selectedExercise)
           await supabase.from('form_responses').insert({
@@ -553,8 +602,8 @@ Avalie APENAS esta resposta específica. Retorne SOMENTE um JSON válido no form
             <div className="modal-footer">
               <button className="btn" onClick={() => { setShowUpload(false); setCsvData([]) }}>Cancelar</button>
               <button className="btn btn-primary" onClick={processAndEvaluate}
-                disabled={evaluating || !csvData.length || !selectedExercise}>
-                {evaluating ? '🤖 Avaliando com IA...' : '🤖 Avaliar com IA'}
+                disabled={evaluating || csvData.length === 0 || !selectedExercise} style={{ opacity: (csvData.length === 0 || !selectedExercise) ? 0.5 : 1 }}>
+                {evaluating ? '🤖 Avaliando...' : csvData.length === 0 ? '🔒 Selecione o CSV primeiro' : '🤖 Avaliar com IA'}
               </button>
             </div>
           </div>
