@@ -261,15 +261,19 @@ Avalie APENAS esta resposta específica. Retorne SOMENTE um JSON válido no form
       body: { prompt }
     })
 
-    if (error) throw new Error(error.message)
+    console.log('Edge Function retornou:', JSON.stringify(data))
+    if (error) { console.error('Edge Function error:', error); throw new Error(error.message) }
 
     // Edge Function já retorna o texto limpo em data.text
-    const clean = data?.text || '{}'
+    const clean = (data?.text || '{}').trim()
+    console.log('Clean text:', clean)
     try {
       const parsed = JSON.parse(clean)
-      if (!parsed.score && parsed.score !== 0) throw new Error('Invalid')
+      console.log('Parsed:', parsed)
+      if (!parsed.score && parsed.score !== 0) throw new Error('Invalid score')
       return parsed
-    } catch {
+    } catch (e) {
+      console.error('Parse error:', e.message, 'Raw:', clean)
       return { score: 0, feedback: 'Não foi possível avaliar automaticamente.', strengths: '', improvements: '' }
     }
   }
