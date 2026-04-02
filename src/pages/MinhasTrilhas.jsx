@@ -25,13 +25,10 @@ export default function MinhasTrilhas() {
     const { data: a } = await supabase.from('analysts').select('*').eq('access_token', token).single()
     if (!a) { setLoading(false); return }
     setAnalyst(a)
-
     const { data: t } = await supabase.from('video_trails').select('*, video_trail_items(id)')
       .or(`team.eq.${a.team},team.eq.ambos`).order('order_index')
-
     const { data: prog } = await supabase.from('video_trail_progress')
       .select('*').eq('analyst_id', a.id)
-
     const progMap = {}
     ;(prog || []).forEach(p => { progMap[p.item_id] = p })
     setProgress(progMap)
@@ -90,13 +87,11 @@ export default function MinhasTrilhas() {
               <div style={{ fontSize: 14, color: 'var(--muted2)' }}>Nenhuma trilha disponível ainda</div>
             </div>
           ) : !selected ? (
-            // Trail list
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14, alignContent: 'start' }}>
               {trails.map(trail => {
                 const { total, done, pct } = trailProgress(trail)
                 return (
-                  <div key={trail.id}
-                    onClick={() => setSelected(trail)}
+                  <div key={trail.id} onClick={() => setSelected(trail)}
                     style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', background: 'var(--surface)', cursor: 'pointer', transition: 'all 0.15s' }}
                     onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--auvo-border)'; e.currentTarget.style.transform = 'translateY(-2px)' }}
                     onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.transform = 'translateY(0)' }}
@@ -123,7 +118,6 @@ export default function MinhasTrilhas() {
               })}
             </div>
           ) : (
-            // Trail detail
             <div>
               <button className="btn btn-sm" style={{ marginBottom: 16, fontSize: 11 }} onClick={() => { setSelected(null); setPlaying(null) }}>
                 ← Voltar às trilhas
@@ -150,36 +144,40 @@ export default function MinhasTrilhas() {
 
               {/* Video player */}
               {playing && (
-                <div style={{ marginBottom: 20 }}>
+                <div style={{ marginBottom: 20, borderRadius: 12, overflow: 'hidden', border: '1px solid var(--auvo-border)' }}>
+                  <div style={{ background: 'var(--auvo-dim)', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--auvo)' }}>▶ {playing.title}</span>
+                    <button onClick={() => setPlaying(null)} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                  </div>
                   {playing.type === 'youtube' && getYoutubeId(playing.url) ? (
-                    <iframe width="100%" height="400"
-                      src={`https://www.youtube.com/embed/${getYoutubeId(playing.url)}?autoplay=1&enablejsapi=1&rel=0`}
-                      frameBorder="0" allowFullScreen allow="autoplay"
-                      style={{ borderRadius: 12 }} title={playing.title}
-                      onLoad={() => {
-                        // Auto-mark as watched after 30 seconds as fallback
-                        if (!progress[playing.id]?.watched) {
-                          setTimeout(() => markWatched(playing), 30000)
-                        }
-                      }} />
-                    <button className="btn btn-sm" style={{ marginTop: 8, fontSize: 11, color: 'var(--green)', width: '100%' }}
-                      onClick={() => { markWatched(playing); setPlaying(null) }}>
-                      ✓ Marcar como assistido e fechar
-                    </button>
+                    <div>
+                      <iframe
+                        width="100%"
+                        height="400"
+                        src={`https://www.youtube.com/embed/${getYoutubeId(playing.url)}?autoplay=1&enablejsapi=1&rel=0`}
+                        frameBorder="0"
+                        allowFullScreen
+                        allow="autoplay"
+                        style={{ display: 'block', borderRadius: 0 }}
+                        title={playing.title}
+                      />
+                      <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--surface2)' }}>
+                        {!progress[playing.id]?.watched ? (
+                          <button className="btn btn-primary btn-sm" style={{ fontSize: 11, width: '100%' }}
+                            onClick={() => { markWatched(playing); setPlaying(null) }}>
+                            ✓ Marcar como assistido e fechar
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: 11, color: 'var(--green)', fontWeight: 600 }}>✓ Assistido</span>
+                        )}
+                      </div>
+                    </div>
                   ) : (
-                    <div style={{ background: 'var(--surface2)', borderRadius: 12, padding: 20, textAlign: 'center' }}>
+                    <div style={{ background: 'var(--surface2)', padding: 20, textAlign: 'center' }}>
                       <div style={{ fontSize: 14, marginBottom: 12 }}>🎬 {playing.title}</div>
                       <a href={playing.url} target="_blank" rel="noreferrer" className="btn btn-primary">Abrir vídeo →</a>
                     </div>
                   )}
-                  <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{playing.title}</div>
-                    {!progress[playing.id]?.watched ? (
-                      <button className="btn btn-primary btn-sm" onClick={() => markWatched(playing)}>✓ Marcar como assistido</button>
-                    ) : (
-                      <span style={{ fontSize: 11, color: 'var(--green)', fontWeight: 600 }}>✓ Assistido</span>
-                    )}
-                  </div>
                 </div>
               )}
 
