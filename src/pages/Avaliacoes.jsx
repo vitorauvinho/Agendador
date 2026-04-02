@@ -69,6 +69,8 @@ export default function Avaliacoes({ activeTeam }) {
   const [evaluating, setEvaluating] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 })
+  const [confirmDeleteEx, setConfirmDeleteEx] = useState(null) // exerciseId a apagar
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false)
   const fileInputRef = useRef()
 
   // Avaliação semanal
@@ -291,6 +293,23 @@ Avalie APENAS esta resposta específica. Retorne SOMENTE um JSON válido no form
     loadAnalystData(selectedAnalyst.id)
   }
 
+  // ── Exclusão de avaliações por IA ────────────────────────────────────────
+  async function deleteExerciseResponses(exId) {
+    const ids = formResponses.filter(r => (r.exercise_id || 'sem_exercicio') === exId).map(r => r.id)
+    if (!ids.length) return
+    await supabase.from('form_responses').delete().in('id', ids)
+    setConfirmDeleteEx(null)
+    if (selectedAnalyst) loadAnalystData(selectedAnalyst.id)
+  }
+
+  async function deleteAllResponses() {
+    const ids = formResponses.map(r => r.id)
+    if (!ids.length) return
+    await supabase.from('form_responses').delete().in('id', ids)
+    setConfirmDeleteAll(false)
+    if (selectedAnalyst) loadAnalystData(selectedAnalyst.id)
+  }
+
   // ── Helpers visuais ───────────────────────────────────────────────────────
   function scoreColor(s) {
     if (s >= 8) return 'var(--green)'
@@ -429,6 +448,20 @@ Avalie APENAS esta resposta específica. Retorne SOMENTE um JSON válido no form
                       </div>
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        {/* Botão apagar tudo */}
+                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                          {confirmDeleteAll ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: 'var(--red-dim)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, fontSize: 11 }}>
+                              <span style={{ color: 'var(--red)' }}>Apagar todas as avaliações de IA?</span>
+                              <button className="btn btn-danger btn-sm" style={{ fontSize: 9 }} onClick={deleteAllResponses}>Sim, apagar</button>
+                              <button className="btn btn-sm" style={{ fontSize: 9 }} onClick={() => setConfirmDeleteAll(false)}>Cancelar</button>
+                            </div>
+                          ) : (
+                            <button className="btn btn-sm" style={{ fontSize: 10, color: 'var(--red)' }} onClick={() => setConfirmDeleteAll(true)}>
+                              🗑️ Apagar todas as avaliações
+                            </button>
+                          )}
+                        </div>
                         {/* Agrupa por exercício */}
                         {Object.entries(
                           formResponses.reduce((acc, r) => {
@@ -443,18 +476,28 @@ Avalie APENAS esta resposta específica. Retorne SOMENTE um JSON válido no form
                           return (
                             <div key={exId} style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
                               <div style={{ padding: '12px 14px', background: 'var(--surface2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <div>
+                                <div style={{ flex: 1 }}>
                                   <div style={{ fontSize: 13, fontWeight: 600 }}>{ex?.title || 'Exercício'}</div>
                                   <div style={{ fontSize: 10, color: 'var(--muted2)', marginTop: 2 }}>
                                     {new Date(responses[0].created_at).toLocaleDateString('pt-BR')} · {responses.length} perguntas avaliadas
                                   </div>
                                 </div>
-                                {avgScore > 0 && (
-                                  <div style={{ textAlign: 'right' }}>
-                                    <div style={{ fontSize: 22, fontWeight: 700, color: scoreColor(avgScore) }}>{avgScore.toFixed(1)}</div>
-                                    <div style={{ fontSize: 9, color: 'var(--muted)' }}>média geral</div>
-                                  </div>
-                                )}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                  {avgScore > 0 && (
+                                    <div style={{ textAlign: 'right' }}>
+                                      <div style={{ fontSize: 22, fontWeight: 700, color: scoreColor(avgScore) }}>{avgScore.toFixed(1)}</div>
+                                      <div style={{ fontSize: 9, color: 'var(--muted)' }}>média geral</div>
+                                    </div>
+                                  )}
+                                  {confirmDeleteEx === exId ? (
+                                    <div style={{ display: 'flex', gap: 5 }}>
+                                      <button className="btn btn-danger btn-sm" style={{ fontSize: 9 }} onClick={() => deleteExerciseResponses(exId)}>Sim</button>
+                                      <button className="btn btn-sm" style={{ fontSize: 9 }} onClick={() => setConfirmDeleteEx(null)}>Não</button>
+                                    </div>
+                                  ) : (
+                                    <button className="btn btn-sm" style={{ fontSize: 9, color: 'var(--red)' }} onClick={() => setConfirmDeleteEx(exId)} title="Apagar respostas deste exercício">🗑️</button>
+                                  )}
+                                </div>
                               </div>
                               <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
                                 {responses.map((r, idx) => (
