@@ -51,7 +51,6 @@ const WEEKLY_CRITERIA = {
 }
 
 export default function Avaliacoes({ activeTeam }) {
-  const [geminiKey, setGeminiKey] = useState('')
   const [analysts, setAnalysts] = useState([])
 
   const [selectedAnalyst, setSelectedAnalyst] = useState(null)
@@ -83,14 +82,12 @@ export default function Avaliacoes({ activeTeam }) {
 
   async function loadAll() {
     setLoading(true)
-    const [{ data: ana }, { data: ex }, { data: settings }] = await Promise.all([
+    const [{ data: ana }, { data: ex }] = await Promise.all([
       supabase.from('analysts').select('*').eq('team', activeTeam).eq('status', 'ativo').order('name'),
       supabase.from('exercise_forms').select('*').or(`team.eq.${activeTeam},team.eq.ambos`),
-      supabase.from('team_settings').select('gemini_api_key').eq('team', activeTeam).single(),
     ])
     setAnalysts(ana || [])
     setExercises(ex || [])
-    if (settings?.gemini_api_key) setGeminiKey(settings.gemini_api_key)
     setLoading(false)
   }
 
@@ -167,11 +164,7 @@ export default function Avaliacoes({ activeTeam }) {
 
   async function processAndEvaluate() {
     if (!csvData.length || !selectedExercise) return
-    if (!geminiKey) {
-      setUploadError('Chave da API do Gemini não configurada. Vá em Configurações → Integrações e adicione sua chave.')
-      return
-    }
-    setEvaluating(true)
+setEvaluating(true)
     setUploadError('')
 
     const skipCols = [
@@ -262,16 +255,16 @@ RESPOSTA DO ANALISTA: ${answer}
 Avalie APENAS esta resposta específica. Retorne SOMENTE um JSON válido no formato:
 {"score": <número de 0 a 10>, "feedback": "<feedback construtivo em português, máximo 3 frases>", "strengths": "<ponto forte específico>", "improvements": "<sugestão de melhoria específica>"}`
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 500 }
-      })
+
+    // Chama via Edge Function — chave nunca exposta no frontend
+    const { data, error } = await supabase.functions.invoke('gemini-evaluate', {
+      body: { prompt }
     })
-    const data = await response.json()
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
+
+    if (error) throw new Error(error.message)
+
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
+    const clean = text.replace(/```json|```/g, '').trim()
     const clean = text.replace(/```json|```/g, '').trim()
     try {
       return JSON.parse(clean)
