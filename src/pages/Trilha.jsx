@@ -24,7 +24,6 @@ export default function Trilha() {
   const [showingVideo, setShowingVideo] = useState(null)
   const [confirmUncheck, setConfirmUncheck] = useState(null)
 
-  // Rotas do enablement que não devem cair aqui
   const ENABLEMENT_ROUTES = ['exercicios','onboarding','biblioteca','revisoes','avaliacoes','gamificacao','trilhas','rh','configuracoes','requalificacao']
   const isEnablementRoute = ENABLEMENT_ROUTES.includes(token)
 
@@ -42,8 +41,7 @@ export default function Trilha() {
   async function handleComplete(session) {
     const hasEx = exerciseForms.some(ef => ef.session_keys?.includes(session.title))
     const exDone = hasEx ? exerciseResponses.some(r => exerciseForms.find(ef => ef.session_keys?.includes(session.title) && ef.id === r.exercise_id) && r.responded) : true
-    if (!exDone) return // não completa se tiver exercício pendente
-
+    if (!exDone) return
     await supabase.from('sessions').update({ completed: true, completed_at: new Date().toISOString() }).eq('id', session.id)
     await supabase.from('xp_history').insert({ analyst_id: analyst.id, xp_gained: session.type === 'simulacao' ? 25 : 10, reason: session.type === 'simulacao' ? 'simulacao_concluida' : 'treinamento_concluido', session_id: session.id })
     const { data: gam } = await supabase.from('analyst_gamification').select('xp_total').eq('analyst_id', analyst.id).single()
@@ -87,7 +85,6 @@ export default function Trilha() {
     const videos = await supabase.from('video_submissions').select('id').eq('analyst_id', analystId)
     const csats = await supabase.from('session_ratings').select('id').eq('analyst_id', analystId)
     const videoCount = videos.data?.length || 0
-    const csatCount = csats.data?.length || 0
     const grant = (id) => { if (!newBadges.includes(id)) newBadges.push(id) }
 
     if (simulations.length >= 1) grant('primeira_simulacao')
@@ -98,7 +95,6 @@ export default function Trilha() {
     const pmocSessions = updatedSessions.filter(s => s.title?.toLowerCase().includes('pmoc'))
     if (pmocSessions.length > 0 && pmocSessions.every(s => s.completed)) grant('pmoc_master')
     if (videoCount >= 5) grant('diretor')
-    if (csatCount >= 20) grant('csat_top')
 
     if (week1Sessions.length > 0 && week1Sessions.every(s => s.completed)) {
       const w1WithDate = week1Sessions.filter(s => s.completed_at)
@@ -203,6 +199,29 @@ export default function Trilha() {
     const { data: updatedSessions } = await supabase.from('sessions').select('*').eq('analyst_id', analyst.id)
     await checkAndGrantBadges(analyst.id, updatedSessions || [], updatedGamif)
     loadAll(true)
+  }
+
+  // Helper to extract YouTube ID
+  function getYoutubeId(url) {
+    const match = url?.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/)
+    return match ? match[1] : null
+  }
+
+  // Handle content item click — YouTube plays inline, others open new tab
+  function handleContentClick(e, item, session) {
+    e.stopPropagation()
+    if (!item.url) return
+    const ytId = getYoutubeId(item.url)
+    if (ytId) {
+      // Toggle inline player
+      if (showingVideo && showingVideo.itemId === item.id) {
+        setShowingVideo(null)
+      } else {
+        setShowingVideo({ itemId: item.id, sessionId: session.id, url: item.url, title: item.title, ytId })
+      }
+    } else {
+      window.open(item.url, '_blank')
+    }
   }
 
   if (loading) return (
@@ -314,12 +333,13 @@ export default function Trilha() {
                                         if (session.completed) setConfirmUncheck(session.id)
                                         else handleComplete(session)
                                       }}
+                                      onClick={e => e.stopPropagation()}
                                       style={{ accentColor: 'var(--green)', flexShrink: 0, cursor: 'pointer' }} />
                                     {confirmUncheck === session.id && (
                                       <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8, boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
                                         <span style={{ fontSize: 11, flex: 1 }}>Desfazer conclusão desta sessão?</span>
-                                        <button className="btn btn-danger btn-sm" style={{ fontSize: 10 }} onClick={() => handleUncomplete(session)}>Sim, desfazer</button>
-                                        <button className="btn btn-sm" style={{ fontSize: 10 }} onClick={() => setConfirmUncheck(null)}>Cancelar</button>
+                                        <button className="btn btn-danger btn-sm" style={{ fontSize: 10 }} onClick={e => { e.stopPropagation(); handleUncomplete(session) }}>Sim, desfazer</button>
+                                        <button className="btn btn-sm" style={{ fontSize: 10 }} onClick={e => { e.stopPropagation(); setConfirmUncheck(null) }}>Cancelar</button>
                                       </div>
                                     )}
                                     <span style={{ flex: 1, textDecoration: session.completed ? 'line-through' : 'none', color: session.completed ? 'var(--muted)' : isNext ? 'var(--auvo)' : 'var(--text)', fontWeight: isNext ? 600 : 400 }}>
@@ -334,42 +354,58 @@ export default function Trilha() {
                                 {isExpanded && (
                                   <div style={{ padding: '10px 12px', background: 'var(--surface2)', borderRadius: '0 0 9px 9px', border: '1px solid var(--border)', borderTop: 'none' }}>
 
-                                    {/* YouTube inline player */}
-                                    {showingVideo && showingVideo.sessionId === session.id && (() => {
-                                      const url = showingVideo.url
-                                      const ytId = url?.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/)?.[1]
-                                      return ytId ? (
-                                        <div style={{ marginBottom: 10 }}>
-                                          <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
-                                            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--auvo)' }}>{showingVideo.title}</span>
-                                            <button onClick={() => setShowingVideo(null)} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 13 }}>✕</button>
-                                          </div>
-                                          <iframe width="100%" height="200" src={`https://www.youtube.com/embed/${ytId}?autoplay=1`}
-                                            frameBorder="0" allowFullScreen allow="autoplay" style={{ borderRadius: 8 }} title={showingVideo.title} />
-                                        </div>
-                                      ) : (
-                                        <div style={{ marginBottom: 10, padding: '10px', background: 'var(--surface2)', borderRadius: 8, textAlign: 'center' }}>
-                                          <a href={url} target="_blank" rel="noreferrer" className="btn btn-primary btn-sm" style={{ textDecoration: 'none', fontSize: 11 }}>Abrir vídeo →</a>
-                                          <button onClick={() => setShowingVideo(null)} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 11, marginLeft: 8 }}>✕ Fechar</button>
-                                        </div>
-                                      )
-                                    })()}
-
                                     {/* Materials */}
                                     {sessionContents.length > 0 && (
                                       <div style={{ marginBottom: 10 }}>
                                         <div style={{ fontSize: 9, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>📎 Materiais</div>
-                                        {sessionContents.map(c => (
-                                          <div key={c.id} className="flex items-center gap-2" style={{ padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
-                                            <span style={{ fontSize: 14 }}>{c.type === 'youtube' ? '▶️' : c.type === 'pdf' ? '📄' : c.type === 'notebooklm' ? '🤖' : c.type === 'playbook' ? '📘' : '🔗'}</span>
-                                            <span style={{ flex: 1 }}>{c.title}</span>
-                                            {c.url && <a href={c.url} target="_blank" rel="noreferrer" style={{ fontSize: 10, color: 'var(--auvo)', textDecoration: 'none' }}>Abrir →</a>}
-                                          </div>
-                                        ))}
+                                        {sessionContents.map(c => {
+                                          const ytId = getYoutubeId(c.url)
+                                          const isPlayingThis = showingVideo?.itemId === c.id
+                                          return (
+                                            <div key={c.id}>
+                                              <div className="flex items-center gap-2" style={{ padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
+                                                <span style={{ fontSize: 14 }}>
+                                                  {c.type === 'youtube' ? '▶️' : c.type === 'pdf' ? '📄' : c.type === 'notebooklm' ? '🤖' : c.type === 'playbook' ? '📘' : '🔗'}
+                                                </span>
+                                                <span style={{ flex: 1 }}>{c.title}</span>
+                                                {c.url && (
+                                                  ytId ? (
+                                                    <button
+                                                      onClick={e => handleContentClick(e, c, session)}
+                                                      style={{ fontSize: 10, color: isPlayingThis ? 'var(--red)' : 'var(--auvo)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                                                      {isPlayingThis ? '⏹ Fechar' : '▶ Assistir'}
+                                                    </button>
+                                                  ) : (
+                                                    <a href={c.url} target="_blank" rel="noreferrer"
+                                                      onClick={e => e.stopPropagation()}
+                                                      style={{ fontSize: 10, color: 'var(--auvo)', textDecoration: 'none' }}>
+                                                      Abrir →
+                                                    </a>
+                                                  )
+                                                )}
+                                              </div>
+                                              {/* Inline YouTube player */}
+                                              {isPlayingThis && ytId && (
+                                                <div style={{ marginTop: 8, marginBottom: 8 }}>
+                                                  <iframe
+                                                    width="100%"
+                                                    height="220"
+                                                    src={`https://www.youtube.com/embed/${ytId}?autoplay=1`}
+                                                    frameBorder="0"
+                                                    allowFullScreen
+                                                    allow="autoplay"
+                                                    style={{ borderRadius: 8, display: 'block' }}
+                                                    title={c.title}
+                                                  />
+                                                </div>
+                                              )}
+                                            </div>
+                                          )
+                                        })}
                                       </div>
                                     )}
 
-                                    {/* Exercícios do treino — busca pelo dia da sessão */}
+                                    {/* Exercícios */}
                                     {(() => {
                                       const dayExercises = exerciseForms.filter(ef => ef.session_keys?.includes(session.title))
                                       if (!dayExercises.length) return null
@@ -410,7 +446,7 @@ export default function Trilha() {
                                       })
                                     })()}
 
-                                    {/* Video */}
+                                    {/* Video submission */}
                                     {!session.video_submissions?.length && (
                                       <div style={{ marginBottom: 8 }}>
                                         <div style={{ fontSize: 10, color: 'var(--muted2)', marginBottom: 5 }}>🎥 Envie o link da sua gravação</div>
@@ -432,7 +468,6 @@ export default function Trilha() {
                                       </button>
                                     )}
 
-                                    {/* Avaliar sessão concluída sem CSAT */}
                                     {session.completed && !hasCsat && (
                                       <button className="btn btn-sm" style={{ width: '100%', fontSize: 11, marginTop: 6, color: 'var(--auvo)', borderColor: 'var(--auvo-border)' }}
                                         onClick={() => { setCsatScore(0); setCsatComment(''); setShowCsat(session.id) }}>
@@ -440,7 +475,6 @@ export default function Trilha() {
                                       </button>
                                     )}
 
-                                    {/* CSAT respondido */}
                                     {session.completed && hasCsat && (
                                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, color: 'var(--muted2)' }}>
                                         <span style={{ fontSize: 16 }}>{EMOJIS[session.session_ratings[0].rating]}</span>
@@ -499,7 +533,7 @@ export default function Trilha() {
         </div>
       </AnalistaLayout>
 
-      {/* CSAT Modal — fora do layout para evitar overflow */}
+      {/* CSAT Modal */}
       {showCsat && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowCsat(null)}>
           <div className="modal" style={{ width: 380 }}>
