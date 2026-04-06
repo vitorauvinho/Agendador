@@ -74,7 +74,7 @@ export function AuthProvider({ children }) {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin,
+        redirectTo: 'https://agendador-one.vercel.app',
       }
     })
     if (error) throw error
