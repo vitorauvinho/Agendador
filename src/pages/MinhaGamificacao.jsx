@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
 import AnalistaLayout from '../components/AnalistaLayout.jsx'
 import { supabase, getLevelInfo, LEVEL_NAMES } from '../lib/supabase'
+import { useAuth } from '../contexts/AuthContext'
 
 const BADGES = [
   { id: 'primeira_simulacao',  icon: '🎯', name: 'Primeiro passo',      desc: 'Concluiu a primeira simulação' },
@@ -17,17 +17,17 @@ const BADGES = [
 ]
 
 export default function MinhaGamificacao() {
-  const { token } = useParams()
+  const { analyst: authAnalyst } = useAuth()
   const [analyst, setAnalyst] = useState(null)
   const [gamif, setGamif] = useState(null)
   const [xpHistory, setXpHistory] = useState([])
   const [ranking, setRanking] = useState([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => { load() }, [token])
+  useEffect(() => { if (authAnalyst?.id) load() }, [authAnalyst])
 
   async function load() {
-    const { data: a } = await supabase.from('analysts').select('*').eq('access_token', token).single()
+    const { data: a } = await supabase.from('analysts').select('*').eq('id', authAnalyst.id).single()
     if (!a) { setLoading(false); return }
     setAnalyst(a)
 
@@ -60,7 +60,7 @@ export default function MinhaGamificacao() {
   if (!analyst) return (
     <div className="loading-screen">
       <div style={{ fontSize: 36 }}>🔒</div>
-      <div style={{ fontSize: 16, color: 'var(--muted2)', marginTop: 8 }}>Link inválido</div>
+      <div style={{ fontSize: 16, color: 'var(--muted2)', marginTop: 8 }}>Acesso não autorizado</div>
     </div>
   )
 
