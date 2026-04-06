@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
 import AnalistaLayout from '../components/AnalistaLayout.jsx'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../contexts/AuthContext'
 
 const CONTENT_TYPES = [
-  { key: 'youtube',    label: 'YouTube',    icon: '▶️' },
+  { key: 'youtube',    label: 'YouTube',         icon: '▶️' },
   { key: 'pdf',        label: 'Trein. Gravados', icon: '🎬' },
-  { key: 'notebooklm', label: 'NotebookLM', icon: '🤖' },
-  { key: 'texto',      label: 'Texto',      icon: '📝' },
-  { key: 'playbook',   label: 'Playbook',   icon: '📘' },
-  { key: 'link_util',  label: 'Link útil',  icon: '🔗' },
+  { key: 'notebooklm', label: 'NotebookLM',      icon: '🤖' },
+  { key: 'texto',      label: 'Texto',           icon: '📝' },
+  { key: 'playbook',   label: 'Playbook',        icon: '📘' },
+  { key: 'link_util',  label: 'Link útil',       icon: '🔗' },
 ]
 
 const TYPE_COLORS = {
@@ -22,7 +22,7 @@ const TYPE_COLORS = {
 }
 
 export default function Estudar() {
-  const { token } = useParams()
+  const { analyst: authAnalyst } = useAuth()
   const [analyst, setAnalyst] = useState(null)
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -30,10 +30,10 @@ export default function Estudar() {
   const [search, setSearch] = useState('')
   const [preview, setPreview] = useState(null)
 
-  useEffect(() => { loadAll() }, [token])
+  useEffect(() => { if (authAnalyst?.id) loadAll() }, [authAnalyst])
 
   async function loadAll() {
-    const { data: a } = await supabase.from('analysts').select('*').eq('access_token', token).single()
+    const { data: a } = await supabase.from('analysts').select('*').eq('id', authAnalyst.id).single()
     if (!a) { setLoading(false); return }
     setAnalyst(a)
     const { data: content } = await supabase
@@ -66,7 +66,7 @@ export default function Estudar() {
   if (!analyst) return (
     <div className="loading-screen">
       <div style={{ fontSize: 36 }}>🔒</div>
-      <div style={{ fontSize: 16, color: 'var(--muted2)', marginTop: 8 }}>Link inválido</div>
+      <div style={{ fontSize: 16, color: 'var(--muted2)', marginTop: 8 }}>Acesso não autorizado</div>
     </div>
   )
 
@@ -96,11 +96,11 @@ export default function Estudar() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', marginBottom: 16 }}>
             <span style={{ fontSize: 14, color: 'var(--muted)', flexShrink: 0 }}>&#128269;</span>
             <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Buscar por titulo ou descricao..."
+              placeholder="Buscar por título ou descrição..."
               style={{ background: 'none', border: 'none', color: 'var(--text)', fontFamily: 'inherit', fontSize: 12, outline: 'none', width: '100%', padding: 0 }} />
             {search && (
               <button onClick={() => setSearch('')}
-                style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 14, padding: 0, flexShrink: 0 }}>X</button>
+                style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 14, padding: 0, flexShrink: 0 }}>✕</button>
             )}
           </div>
 
