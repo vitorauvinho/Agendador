@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
 import Sidebar from './components/Sidebar.jsx'
 import Onboarding from './pages/Onboarding.jsx'
 import Biblioteca from './pages/Biblioteca.jsx'
@@ -15,8 +16,11 @@ import Trilhas from './pages/Trilhas.jsx'
 import Exercicios from './pages/Exercicios.jsx'
 import Requalificacao from './pages/Requalificacao.jsx'
 import MinhasTrilhas from './pages/MinhasTrilhas.jsx'
+import Login from './pages/Login.jsx'
+import Unauthorized from './pages/Unauthorized.jsx'
 import { supabase } from './lib/supabase.js'
 
+// ── Layout do painel do Enablement ───────────────────────────
 function MainLayout({ activeTeam, onTeamChange, pendingCount }) {
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
@@ -32,23 +36,63 @@ function MainLayout({ activeTeam, onTeamChange, pendingCount }) {
           <Route path="trilhas"       element={<Trilhas       activeTeam={activeTeam} />} />
           <Route path="exercicios"    element={<Exercicios    activeTeam={activeTeam} />} />
           <Route path="rh"            element={<PainelRH      activeTeam={activeTeam} />} />
-          <Route path="configuracoes"   element={<Configuracoes   activeTeam={activeTeam} />} />
-          <Route path="requalificacao"  element={<Requalificacao  activeTeam={activeTeam} />} />
+          <Route path="configuracoes" element={<Configuracoes activeTeam={activeTeam} />} />
+          <Route path="requalificacao" element={<Requalificacao activeTeam={activeTeam} />} />
         </Routes>
       </div>
     </div>
   )
 }
 
-export default function App() {
+// ── Rota protegida para Enablement ───────────────────────────
+function EnablementRoute({ children }) {
+  const { user, role, loading } = useAuth()
+
+  if (loading) return (
+    <div className="loading-screen">
+      <div className="loading-logo">A</div>
+      <div className="spinner" />
+    </div>
+  )
+
+  if (!user) return <Navigate to="/login" replace />
+  if (role === 'analyst') return <Navigate to="/analista" replace />
+  if (role !== 'enablement') return <Navigate to="/unauthorized" replace />
+
+  return children
+}
+
+// ── Rota protegida para Analista ─────────────────────────────
+function AnalistaRoute({ children }) {
+  const { user, role, loading } = useAuth()
+
+  if (loading) return (
+    <div className="loading-screen">
+      <div className="loading-logo">A</div>
+      <div className="spinner" />
+    </div>
+  )
+
+  if (!user) return <Navigate to="/login" replace />
+  if (role === 'enablement') return <Navigate to="/onboarding" replace />
+  if (role !== 'analyst') return <Navigate to="/unauthorized" replace />
+
+  return children
+}
+
+// ── App principal ────────────────────────────────────────────
+function AppContent() {
+  const { role, analyst, loading } = useAuth()
   const [activeTeam, setActiveTeam] = useState('atendimento')
   const [pendingCount, setPendingCount] = useState(0)
 
   useEffect(() => {
-    loadPending()
-    const interval = setInterval(loadPending, 30000)
-    return () => clearInterval(interval)
-  }, [activeTeam])
+    if (role === 'enablement') {
+      loadPending()
+      const interval = setInterval(loadPending, 30000)
+      return () => clearInterval(interval)
+    }
+  }, [activeTeam, role])
 
   async function loadPending() {
     const { data } = await supabase
@@ -59,22 +103,59 @@ export default function App() {
     setPendingCount(data?.length || 0)
   }
 
+  if (loading) return (
+    <div className="loading-screen">
+      <div className="loading-logo">A</div>
+      <div className="spinner" />
+    </div>
+  )
+
   return (
     <Routes>
-      {/* Rotas do analista — token específico */}
-      <Route path="/analista/:token"              element={<Trilha />} />
-      <Route path="/analista/:token/gamificacao"  element={<MinhaGamificacao />} />
-      <Route path="/analista/:token/estudar"      element={<Estudar />} />
-      <Route path="/analista/:token/trilhas"      element={<MinhasTrilhas />} />
+      {/* Rotas públicas */}
+      <Route path="/login" element={<Login />} />
+      <Route path="/unauthorized" element={<Unauthorized />} />
 
-      {/* Plataforma principal — rotas relativas sem barra */}
+      {/* Rotas do analista — protegidas por SSO */}
+      <Route path="/analista" element={
+        <AnalistaRoute>
+          <Trilha analystId={analyst?.id} />
+        </AnalistaRoute>
+      } />
+      <Route path="/analista/gamificacao" element={
+        <AnalistaRoute>
+          <MinhaGamificacao analystId={analyst?.id} />
+        </AnalistaRoute>
+      } />
+      <Route path="/analista/estudar" element={
+        <AnalistaRoute>
+          <Estudar analystId={analyst?.id} />
+        </AnalistaRoute>
+      } />
+      <Route path="/analista/trilhas" element={
+        <AnalistaRoute>
+          <MinhasTrilhas analystId={analyst?.id} />
+        </AnalistaRoute>
+      } />
+
+      {/* Painel do Enablement — protegido por SSO */}
       <Route path="/*" element={
-        <MainLayout
-          activeTeam={activeTeam}
-          onTeamChange={setActiveTeam}
-          pendingCount={pendingCount}
-        />
+        <EnablementRoute>
+          <MainLayout
+            activeTeam={activeTeam}
+            onTeamChange={setActiveTeam}
+            pendingCount={pendingCount}
+          />
+        </EnablementRoute>
       } />
     </Routes>
+  )
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   )
 }
