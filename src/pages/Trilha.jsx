@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
 import AnalistaLayout from '../components/AnalistaLayout.jsx'
 import { supabase, WEEKS, getSessionDate, fmtDate, fmtWeekday, fmtDateLong, XP_VALUES, getLevelInfo } from '../lib/supabase'
+import { useAuth } from '../contexts/AuthContext'
 
 const EMOJIS = ['', '😞', '😐', '😊', '😁', '🤩']
 
 export default function Trilha() {
-  const { token } = useParams()
+  const { analyst: authAnalyst } = useAuth()
   const [analyst, setAnalyst] = useState(null)
   const [sessions, setSessions] = useState([])
   const [contents, setContents] = useState([])
@@ -24,13 +24,9 @@ export default function Trilha() {
   const [showingVideo, setShowingVideo] = useState(null)
   const [confirmUncheck, setConfirmUncheck] = useState(null)
 
-  const ENABLEMENT_ROUTES = ['exercicios','onboarding','biblioteca','revisoes','avaliacoes','gamificacao','trilhas','rh','configuracoes','requalificacao']
-  const isEnablementRoute = ENABLEMENT_ROUTES.includes(token)
-
   useEffect(() => {
-    if (!isEnablementRoute) loadAll()
-    else setLoading(false)
-  }, [token])
+    if (authAnalyst?.id) loadAll()
+  }, [authAnalyst])
 
   async function handleUncomplete(session) {
     await supabase.from('sessions').update({ completed: false, completed_at: null }).eq('id', session.id)
@@ -55,8 +51,8 @@ export default function Trilha() {
 
   async function loadAll(silent = false) {
     if (!silent) setLoading(true)
-    const { data: a } = await supabase.from('analysts').select('*').eq('access_token', token).single()
-    if (!a || a.status === 'requalificacao') { setLoading(false); return }
+    const { data: a } = await supabase.from('analysts').select('*').eq('id', authAnalyst.id).single()
+    if (!a) { setLoading(false); return }
     setAnalyst(a)
 
     const [{ data: sess }, { data: cont }, { data: gam }, { data: er }, { data: exForms }, { data: exResp }] = await Promise.all([
@@ -83,7 +79,6 @@ export default function Trilha() {
     const completedSessions = updatedSessions.filter(s => s.completed)
     const simulations = completedSessions.filter(s => s.type === 'simulacao')
     const videos = await supabase.from('video_submissions').select('id').eq('analyst_id', analystId)
-    const csats = await supabase.from('session_ratings').select('id').eq('analyst_id', analystId)
     const videoCount = videos.data?.length || 0
     const grant = (id) => { if (!newBadges.includes(id)) newBadges.push(id) }
 
@@ -201,19 +196,16 @@ export default function Trilha() {
     loadAll(true)
   }
 
-  // Helper to extract YouTube ID
   function getYoutubeId(url) {
     const match = url?.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/)
     return match ? match[1] : null
   }
 
-  // Handle content item click — YouTube plays inline, others open new tab
   function handleContentClick(e, item, session) {
     e.stopPropagation()
     if (!item.url) return
     const ytId = getYoutubeId(item.url)
     if (ytId) {
-      // Toggle inline player
       if (showingVideo && showingVideo.itemId === item.id) {
         setShowingVideo(null)
       } else {
@@ -231,15 +223,10 @@ export default function Trilha() {
     </div>
   )
 
-  if (isEnablementRoute) {
-    window.location.href = '/' + token
-    return null
-  }
-
   if (!analyst) return (
     <div className="loading-screen">
       <div style={{ fontSize: 36 }}>🔒</div>
-      <div style={{ fontSize: 16, color: 'var(--muted2)', marginTop: 8 }}>Link inválido ou expirado</div>
+      <div style={{ fontSize: 16, color: 'var(--muted2)', marginTop: 8 }}>Acesso não autorizado</div>
     </div>
   )
 
@@ -252,7 +239,6 @@ export default function Trilha() {
       <AnalistaLayout analystName={analyst.name} analystTeam={analyst.team}>
         <div style={{ padding: '24px', maxWidth: 860, margin: '0 auto' }}>
 
-          {/* Header */}
           <div style={{ background: 'linear-gradient(135deg, rgba(109,38,194,0.15), rgba(16,185,129,0.06))', border: '1px solid var(--auvo-border)', borderRadius: 16, padding: 20, marginBottom: 20 }}>
             <div className="flex items-center gap-3" style={{ marginBottom: 14 }}>
               <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--auvo-dim)', border: '1px solid var(--auvo-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 700, color: 'var(--auvo)', flexShrink: 0 }}>
@@ -281,8 +267,6 @@ export default function Trilha() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 16 }}>
-
-            {/* Sessions */}
             <div>
               {WEEKS.map(week => {
                 const wkSessions = sessions.filter(s => week.days.includes(s.day_number))
@@ -318,21 +302,11 @@ export default function Trilha() {
 
                             return (
                               <div key={session.id} style={{ marginBottom: 6 }}>
-                                <div style={{
-                                  padding: '10px 12px', borderRadius: 9, fontSize: 12,
-                                  border: `1px solid ${session.completed ? 'rgba(16,185,129,0.2)' : isNext ? 'var(--auvo-border)' : 'var(--border)'}`,
-                                  background: session.completed ? 'rgba(16,185,129,0.04)' : isNext ? 'var(--auvo-dim)' : 'var(--surface)',
-                                  position: 'relative',
-                                  cursor: 'pointer',
-                                }}
-                                  onClick={() => setExpandedSession(isExpanded ? null : session.id)}
-                                >
+                                <div style={{ padding: '10px 12px', borderRadius: 9, fontSize: 12, border: `1px solid ${session.completed ? 'rgba(16,185,129,0.2)' : isNext ? 'var(--auvo-border)' : 'var(--border)'}`, background: session.completed ? 'rgba(16,185,129,0.04)' : isNext ? 'var(--auvo-dim)' : 'var(--surface)', position: 'relative', cursor: 'pointer' }}
+                                  onClick={() => setExpandedSession(isExpanded ? null : session.id)}>
                                   <div className="flex items-center gap-2">
                                     <input type="checkbox" checked={session.completed}
-                                      onChange={() => {
-                                        if (session.completed) setConfirmUncheck(session.id)
-                                        else handleComplete(session)
-                                      }}
+                                      onChange={() => { if (session.completed) setConfirmUncheck(session.id); else handleComplete(session) }}
                                       onClick={e => e.stopPropagation()}
                                       style={{ accentColor: 'var(--green)', flexShrink: 0, cursor: 'pointer' }} />
                                     {confirmUncheck === session.id && (
@@ -353,8 +327,6 @@ export default function Trilha() {
 
                                 {isExpanded && (
                                   <div style={{ padding: '10px 12px', background: 'var(--surface2)', borderRadius: '0 0 9px 9px', border: '1px solid var(--border)', borderTop: 'none' }}>
-
-                                    {/* Materials */}
                                     {sessionContents.length > 0 && (
                                       <div style={{ marginBottom: 10 }}>
                                         <div style={{ fontSize: 9, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>📎 Materiais</div>
@@ -368,35 +340,17 @@ export default function Trilha() {
                                                   {c.type === 'youtube' ? '▶️' : c.type === 'pdf' ? '📄' : c.type === 'notebooklm' ? '🤖' : c.type === 'playbook' ? '📘' : '🔗'}
                                                 </span>
                                                 <span style={{ flex: 1 }}>{c.title}</span>
-                                                {c.url && (
-                                                  ytId ? (
-                                                    <button
-                                                      onClick={e => handleContentClick(e, c, session)}
-                                                      style={{ fontSize: 10, color: isPlayingThis ? 'var(--red)' : 'var(--auvo)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                                                      {isPlayingThis ? '⏹ Fechar' : '▶ Assistir'}
-                                                    </button>
-                                                  ) : (
-                                                    <a href={c.url} target="_blank" rel="noreferrer"
-                                                      onClick={e => e.stopPropagation()}
-                                                      style={{ fontSize: 10, color: 'var(--auvo)', textDecoration: 'none' }}>
-                                                      Abrir →
-                                                    </a>
-                                                  )
-                                                )}
+                                                {c.url && (ytId ? (
+                                                  <button onClick={e => handleContentClick(e, c, session)} style={{ fontSize: 10, color: isPlayingThis ? 'var(--red)' : 'var(--auvo)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                                                    {isPlayingThis ? '⏹ Fechar' : '▶ Assistir'}
+                                                  </button>
+                                                ) : (
+                                                  <a href={c.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: 10, color: 'var(--auvo)', textDecoration: 'none' }}>Abrir →</a>
+                                                ))}
                                               </div>
-                                              {/* Inline YouTube player */}
                                               {isPlayingThis && ytId && (
                                                 <div style={{ marginTop: 8, marginBottom: 8 }}>
-                                                  <iframe
-                                                    width="100%"
-                                                    height="220"
-                                                    src={`https://www.youtube.com/embed/${ytId}?autoplay=1`}
-                                                    frameBorder="0"
-                                                    allowFullScreen
-                                                    allow="autoplay"
-                                                    style={{ borderRadius: 8, display: 'block' }}
-                                                    title={c.title}
-                                                  />
+                                                  <iframe width="100%" height="220" src={`https://www.youtube.com/embed/${ytId}?autoplay=1`} frameBorder="0" allowFullScreen allow="autoplay" style={{ borderRadius: 8, display: 'block' }} title={c.title} />
                                                 </div>
                                               )}
                                             </div>
@@ -405,7 +359,6 @@ export default function Trilha() {
                                       </div>
                                     )}
 
-                                    {/* Exercícios */}
                                     {(() => {
                                       const dayExercises = exerciseForms.filter(ef => ef.session_keys?.includes(session.title))
                                       if (!dayExercises.length) return null
@@ -413,32 +366,20 @@ export default function Trilha() {
                                         const resp = exerciseResponses.find(r => r.exercise_id === ef.id)
                                         return (
                                           <div key={ef.id} style={{ background: resp?.responded ? 'var(--green-dim)' : 'var(--amber-dim)', border: `1px solid ${resp?.responded ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}`, borderRadius: 8, padding: '10px 12px', marginBottom: 8, fontSize: 11 }}>
-                                            <div style={{ fontWeight: 600, marginBottom: 4, color: resp?.responded ? 'var(--green)' : 'var(--amber)' }}>
-                                              📋 Exercício do treino {resp?.responded ? '✅' : ''}
-                                            </div>
+                                            <div style={{ fontWeight: 600, marginBottom: 4, color: resp?.responded ? 'var(--green)' : 'var(--amber)' }}>📋 Exercício do treino {resp?.responded ? '✅' : ''}</div>
                                             <div style={{ fontSize: 11, color: 'var(--muted2)', marginBottom: 8 }}>{ef.title}</div>
                                             {resp?.responded ? (
-                                              <div style={{ fontSize: 10, color: 'var(--green)' }}>
-                                                ✓ Respondido em {new Date(resp.responded_at).toLocaleDateString('pt-BR')}
-                                              </div>
+                                              <div style={{ fontSize: 10, color: 'var(--green)' }}>✓ Respondido em {new Date(resp.responded_at).toLocaleDateString('pt-BR')}</div>
                                             ) : (
                                               <div className="flex gap-2">
-                                                <a href={ef.form_url} target="_blank" rel="noreferrer"
-                                                  className="btn btn-primary btn-sm" style={{ fontSize: 10, textDecoration: 'none' }}>
-                                                  📝 Abrir formulário →
-                                                </a>
+                                                <a href={ef.form_url} target="_blank" rel="noreferrer" className="btn btn-primary btn-sm" style={{ fontSize: 10, textDecoration: 'none' }}>📝 Abrir formulário →</a>
                                                 <button className="btn btn-sm" style={{ fontSize: 10, color: 'var(--green)', borderColor: 'rgba(16,185,129,0.3)' }}
                                                   onClick={async () => {
-                                                    await supabase.from('exercise_responses').upsert(
-                                                      { exercise_id: ef.id, analyst_id: analyst.id, responded: true, responded_at: new Date().toISOString() },
-                                                      { onConflict: 'exercise_id,analyst_id' }
-                                                    )
+                                                    await supabase.from('exercise_responses').upsert({ exercise_id: ef.id, analyst_id: analyst.id, responded: true, responded_at: new Date().toISOString() }, { onConflict: 'exercise_id,analyst_id' })
                                                     await supabase.from('xp_history').insert({ analyst_id: analyst.id, xp_gained: 15, reason: 'exercicio_enviado', session_id: session.id })
                                                     await supabase.from('notifications').insert({ team: analyst.team, type: 'exercise_submitted', analyst_id: analyst.id, session_id: session.id, message: `${analyst.name} respondeu o exercício "${ef.title}"` })
                                                     loadAll(true)
-                                                  }}>
-                                                  ✓ Já respondi
-                                                </button>
+                                                  }}>✓ Já respondi</button>
                                               </div>
                                             )}
                                           </div>
@@ -446,7 +387,6 @@ export default function Trilha() {
                                       })
                                     })()}
 
-                                    {/* Video submission */}
                                     {!session.video_submissions?.length && (
                                       <div style={{ marginBottom: 8 }}>
                                         <div style={{ fontSize: 10, color: 'var(--muted2)', marginBottom: 5 }}>🎥 Envie o link da sua gravação</div>
@@ -460,29 +400,21 @@ export default function Trilha() {
                                     )}
                                     {vidDone && <div style={{ fontSize: 11, color: 'var(--green)', marginBottom: 8 }}>✅ Vídeo enviado!</div>}
 
-                                    {/* Complete button */}
                                     {!session.completed && (
-                                      <button className="btn btn-primary btn-sm" style={{ width: '100%', fontSize: 11, marginTop: 4 }}
-                                        onClick={() => completeSession(session)}>
+                                      <button className="btn btn-primary btn-sm" style={{ width: '100%', fontSize: 11, marginTop: 4 }} onClick={() => completeSession(session)}>
                                         {hasCsat ? 'Marcar como concluída' : 'Concluir e avaliar sessão'}
                                       </button>
                                     )}
-
                                     {session.completed && !hasCsat && (
-                                      <button className="btn btn-sm" style={{ width: '100%', fontSize: 11, marginTop: 6, color: 'var(--auvo)', borderColor: 'var(--auvo-border)' }}
-                                        onClick={() => { setCsatScore(0); setCsatComment(''); setShowCsat(session.id) }}>
+                                      <button className="btn btn-sm" style={{ width: '100%', fontSize: 11, marginTop: 6, color: 'var(--auvo)', borderColor: 'var(--auvo-border)' }} onClick={() => { setCsatScore(0); setCsatComment(''); setShowCsat(session.id) }}>
                                         ✨ Avaliar esta sessão
                                       </button>
                                     )}
-
                                     {session.completed && hasCsat && (
                                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, color: 'var(--muted2)' }}>
                                         <span style={{ fontSize: 16 }}>{EMOJIS[session.session_ratings[0].rating]}</span>
                                         <span>Você avaliou esta sessão</span>
-                                        <button className="btn btn-sm" style={{ fontSize: 9, marginLeft: 'auto' }}
-                                          onClick={() => { setCsatScore(session.session_ratings[0].rating); setCsatComment(session.session_ratings[0].comment || ''); setShowCsat(session.id) }}>
-                                          Editar
-                                        </button>
+                                        <button className="btn btn-sm" style={{ fontSize: 9, marginLeft: 'auto' }} onClick={() => { setCsatScore(session.session_ratings[0].rating); setCsatComment(session.session_ratings[0].comment || ''); setShowCsat(session.id) }}>Editar</button>
                                       </div>
                                     )}
                                   </div>
@@ -498,7 +430,6 @@ export default function Trilha() {
               })}
             </div>
 
-            {/* Right sidebar */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {enRatings.length > 0 && (
                 <div className="card">
@@ -514,7 +445,6 @@ export default function Trilha() {
                   ))}
                 </div>
               )}
-
               {gamif && (
                 <div className="card">
                   <div className="card-title">Sua gamificação</div>
@@ -533,7 +463,6 @@ export default function Trilha() {
         </div>
       </AnalistaLayout>
 
-      {/* CSAT Modal */}
       {showCsat && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowCsat(null)}>
           <div className="modal" style={{ width: 380 }}>
