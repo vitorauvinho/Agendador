@@ -37,7 +37,7 @@ export default function Onboarding({ activeTeam }) {
   const [confirmDeleteEx, setConfirmDeleteEx] = useState(null)
   const [roles, setRoles] = useState([])
   const [showAddSession, setShowAddSession] = useState(false)
-  const [newSessionForm, setNewSessionForm] = useState({ title: '', day: 1, type: 'treinamento', custom: false })
+  const [newSessionForm, setNewSessionForm] = useState({ title: '', day: 1, type: 'treinamento', custom: false, picked: [] })
   const [savingSession, setSavingSession] = useState(false)
   const [sessionOrder, setSessionOrder] = useState([])
   const dragItem = useRef(null)
@@ -129,19 +129,37 @@ export default function Onboarding({ activeTeam }) {
   }
 
   async function addSessionToAnalyst() {
-    if (!newSessionForm.title) return
+    if (!newSessionForm.custom && !newSessionForm.picked.length) return
+    if (newSessionForm.custom && !newSessionForm.title) return
     setSavingSession(true)
-    await supabase.from('sessions').insert({
-      analyst_id: selectedId,
-      session_key: `manual_${Date.now()}`,
-      day_number: newSessionForm.day,
-      type: newSessionForm.type,
-      title: newSessionForm.title,
-      completed: false,
-    })
-    setSavingSession(false); setShowAddSession(false)
-    setNewSessionForm({ title: '', day: 1, type: 'treinamento', custom: false })
-    loadSessions(selectedId); loadAnalysts(true)
+    const maxKey = sessions.length > 0 ? Math.max(...sessions.map(s => s.session_key || 0)) : 0
+    if (newSessionForm.custom) {
+      await supabase.from('sessions').insert({
+        analyst_id: selectedId,
+        session_key: maxKey + 1,
+        day_number: newSessionForm.day,
+        type: newSessionForm.type,
+        title: newSessionForm.title,
+        completed: false,
+      })
+    } else {
+      for (let i = 0; i < newSessionForm.picked.length; i++) {
+        const s = newSessionForm.picked[i]
+        await supabase.from('sessions').insert({
+          analyst_id: selectedId,
+          session_key: maxKey + i + 1,
+          day_number: s.day,
+          type: s.type,
+          title: s.title,
+          completed: false,
+        })
+      }
+    }
+    setSavingSession(false)
+    setShowAddSession(false)
+    setNewSessionForm({ title: '', day: 1, type: 'treinamento', custom: false, picked: [] })
+    loadSessions(selectedId)
+    loadAnalysts(true)
   }
 
   function handleDragStart(e, id) { dragItem.current = id; e.dataTransfer.effectAllowed = 'move' }
@@ -600,7 +618,7 @@ export default function Onboarding({ activeTeam }) {
                 <label>Tipo</label>
                 <div className="flex gap-2" style={{ marginBottom: 12 }}>
                   {[['existing','Sessão existente'],['new','Nova sessão']].map(([k,l]) => (
-                    <button key={k} onClick={() => setNewSessionForm(f => ({ ...f, custom: k === 'new', title: '' }))}
+                    <button key={k} onClick={() => setNewSessionForm(f => ({ ...f, custom: k === 'new', title: '', picked: [] }))}
                       style={{ flex: 1, padding: '8px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, border: `1px solid ${(k==='new'?newSessionForm.custom:!newSessionForm.custom)?'var(--auvo-border)':'var(--border)'}`, background: (k==='new'?newSessionForm.custom:!newSessionForm.custom)?'var(--auvo-dim)':'transparent', color: (k==='new'?newSessionForm.custom:!newSessionForm.custom)?'var(--auvo)':'var(--muted2)' }}>
                       {l}
                     </button>
@@ -609,16 +627,25 @@ export default function Onboarding({ activeTeam }) {
               </div>
               {!newSessionForm.custom ? (
                 <div className="form-group">
-                  <label>Selecionar sessão</label>
+                  <label>Selecionar sessões {newSessionForm.picked.length > 0 && <span style={{ color: 'var(--auvo)', fontSize: 10 }}>({newSessionForm.picked.length} selecionada{newSessionForm.picked.length > 1 ? 's' : ''})</span>}</label>
                   <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    {allSessions.filter(s => !sessions.find(se => se.title === s.title)).map(s => (
-                      <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 7, border: `1px solid ${newSessionForm.title===s.title?'var(--auvo-border)':'var(--border)'}`, background: newSessionForm.title===s.title?'var(--auvo-dim)':'transparent', cursor: 'pointer', marginBottom: 0, fontSize: 12 }}>
-                        <input type="radio" checked={newSessionForm.title===s.title} onChange={() => setNewSessionForm(f => ({ ...f, title: s.title, day: s.day, type: s.type }))} />
-                        <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, background: 'var(--surface3)', color: 'var(--muted)', flexShrink: 0 }}>Dia {s.day}</span>
-                        <span style={{ flex: 1 }}>{s.title}</span>
-                        <span className={`tag tag-${s.type}`} style={{ fontSize: 8 }}>{s.type==='treinamento'?'T':'S'}</span>
-                      </label>
-                    ))}
+                    {allSessions.filter(s => !sessions.find(se => se.title === s.title)).map(s => {
+                      const isPicked = newSessionForm.picked.some(p => p.title === s.title)
+                      return (
+                        <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 7, border: `1px solid ${isPicked ? 'var(--auvo-border)' : 'var(--border)'}`, background: isPicked ? 'var(--auvo-dim)' : 'transparent', cursor: 'pointer', marginBottom: 0, fontSize: 12 }}>
+                          <input type="checkbox" checked={isPicked}
+                            onChange={() => setNewSessionForm(f => ({
+                              ...f,
+                              picked: isPicked
+                                ? f.picked.filter(p => p.title !== s.title)
+                                : [...f.picked, { title: s.title, day: s.day, type: s.type }]
+                            }))} />
+                          <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, background: 'var(--surface3)', color: 'var(--muted)', flexShrink: 0, whiteSpace: 'nowrap' }}>Dia {s.day}</span>
+                          <span style={{ flex: 1 }}>{s.title}</span>
+                          <span className={`tag tag-${s.type}`} style={{ fontSize: 8 }}>{s.type==='treinamento'?'T':'S'}</span>
+                        </label>
+                      )
+                    })}
                   </div>
                 </div>
               ) : (
@@ -636,7 +663,10 @@ export default function Onboarding({ activeTeam }) {
             </div>
             <div className="modal-footer">
               <button className="btn" onClick={() => setShowAddSession(false)}>Cancelar</button>
-              <button className="btn btn-primary" onClick={addSessionToAnalyst} disabled={savingSession || !newSessionForm.title}>{savingSession ? 'Adicionando...' : 'Adicionar sessão'}</button>
+              <button className="btn btn-primary" onClick={addSessionToAnalyst}
+                disabled={savingSession || (!newSessionForm.custom && !newSessionForm.picked.length) || (newSessionForm.custom && !newSessionForm.title)}>
+                {savingSession ? 'Adicionando...' : newSessionForm.picked.length > 1 ? `Adicionar (${newSessionForm.picked.length})` : 'Adicionar sessão'}
+              </button>
             </div>
           </div>
         </div>
