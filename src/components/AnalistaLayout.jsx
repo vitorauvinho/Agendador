@@ -1,31 +1,26 @@
-import { useParams, useLocation } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { useAuth } from '../contexts/AuthContext'
 
 const NAV_ITEMS = [
-  { path: '',              icon: '🗓️', label: 'Minha trilha' },
-  { path: '/trilhas',      icon: '🎬', label: 'Trilhas de vídeo' },
-  { path: '/estudar',      icon: '📚', label: 'Materiais' },
-  { path: '/gamificacao',  icon: '🏆', label: 'Gamificação' },
+  { path: '',             icon: '🗓️', label: 'Minha trilha' },
+  { path: '/trilhas',     icon: '🎬', label: 'Trilhas de vídeo' },
+  { path: '/estudar',     icon: '📚', label: 'Materiais' },
+  { path: '/gamificacao', icon: '🏆', label: 'Gamificação' },
 ]
 
 const NOTEBOOK_URL = 'https://notebooklm.google.com/notebook/14128fec-c0ef-452b-9fde-fd5fc63dfda4'
 
 export default function AnalistaLayout({ children, analystName, analystTeam }) {
-  const { token } = useParams()
+  const { analyst: authAnalyst } = useAuth()
   const location = useLocation()
   const [logoUrl, setLogoUrl] = useState('')
   const [companyName, setCompanyName] = useState('Auvo')
-  const [showAssistant, setShowAssistant] = useState(false)
 
   useEffect(() => {
     async function loadSettings() {
-      let team = analystTeam
-      if (!team && token) {
-        const { data: a } = await supabase
-          .from('analysts').select('team').eq('access_token', token).single()
-        team = a?.team
-      }
+      const team = analystTeam || authAnalyst?.team
       if (!team) return
       const { data } = await supabase
         .from('team_settings')
@@ -36,7 +31,7 @@ export default function AnalistaLayout({ children, analystName, analystTeam }) {
       if (data?.company_name) setCompanyName(data.company_name)
     }
     loadSettings()
-  }, [token, analystTeam])
+  }, [analystTeam, authAnalyst])
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg)' }}>
@@ -55,14 +50,14 @@ export default function AnalistaLayout({ children, analystName, analystTeam }) {
           )}
           <div style={{ fontSize: 12, fontWeight: 600 }}>{companyName}</div>
           <div style={{ fontSize: 10, color: 'var(--muted2)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {analystName || 'Analista'}
+            {analystName || authAnalyst?.name || 'Analista'}
           </div>
         </div>
 
         <div style={{ padding: '0 8px', flex: 1 }}>
           <div style={{ fontSize: 8, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '0 8px', marginBottom: 6 }}>Menu</div>
           {NAV_ITEMS.map(item => {
-            const fullPath = `/analista/${token}${item.path}`
+            const fullPath = `/analista${item.path}`
             const isActive = location.pathname === fullPath
             return (
               <a key={item.path} href={fullPath}
